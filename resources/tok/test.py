@@ -94,7 +94,6 @@ def test_signal_clears_clipboard(tmp_path):
 
     add_secret(tmp_path, "my-secret-token", "testpass")
 
-    fake_tty = tmp_path / "fake_tty"
     osc_log = tmp_path / "osc_log"
 
     # A helper script that opens the FIFO as /dev/tty via _open_tty monkeypatch,
@@ -138,6 +137,6 @@ tok.main()
     proc.send_signal(signal.SIGTERM)
     proc.wait(timeout=5)
 
-    # After SIGTERM the clear sequence (payload "!") should appear
+    # After SIGTERM the clear sequence (empty payload) should appear
     content = osc_log.read_text()
-    assert "\033]52;c;!\a" in content, "clipboard was not cleared after signal"
+    assert "\033]52;c;\a" in content, "clipboard was not cleared after signal"

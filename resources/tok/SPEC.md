@@ -40,7 +40,7 @@ This command can be initialised with a secret (the *tok*en), which it encrypts a
 - Listing: `--list` shows all stored secret names.
 - Wrong passphrase: decryption fails with a clear error.
 - Missing secret: requesting a non-existent name fails with a clear error.
-- Signal cleanup: clipboard is cleared when tok is terminated during the wait period.
+- Signal cleanup: SIGTERM during the wait period produces a valid OSC 52 clear sequence (`\033]52;c;\a` — empty payload).
 
 ### Not tested
 - Passphrase prompt when stdin is piped (requires `/dev/tty`).

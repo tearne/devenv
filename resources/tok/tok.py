@@ -41,8 +41,8 @@ def clipboard_copy(data, tty):
 
 
 def clipboard_clear(tty):
-    # printf '\033]52;c;!\a' > /dev/tty
-    _osc52_write("!", tty)
+    # printf '\033]52;c;\a' > /dev/tty  (empty payload clears clipboard)
+    _osc52_write("", tty)
 
 
 def read_passphrase(prompt):
