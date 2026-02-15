@@ -3,6 +3,7 @@
 import os
 import signal
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -84,24 +85,38 @@ def test_missing_secret_rejected(tmp_path):
 
 
 def test_signal_clears_clipboard(tmp_path):
-    # Set up a fake xclip that writes to a file
+    """Verify that SIGTERM during the clipboard-clear wait triggers an immediate clear.
+
+    We create a fake /dev/tty (a FIFO) so OSC 52 writes go to a file we can inspect,
+    then send SIGTERM and confirm the clear sequence appears.
+    """
+    import base64
+
     add_secret(tmp_path, "my-secret-token", "testpass")
 
-    fake_bin = tmp_path / "bin"
-    fake_bin.mkdir()
-    clip_file = tmp_path / "clipboard"
+    fake_tty = tmp_path / "fake_tty"
+    osc_log = tmp_path / "osc_log"
 
-    fake_xclip = fake_bin / "xclip"
-    fake_xclip.write_text(f'#!/bin/bash\ncat > "{clip_file}"\n')
-    fake_xclip.chmod(0o755)
+    # A helper script that opens the FIFO as /dev/tty via _open_tty monkeypatch,
+    # by overriding _open_tty in tok before main() runs.
+    wrapper = tmp_path / "wrapper.py"
+    wrapper.write_text(f"""\
+import sys, os
+sys.path.insert(0, os.path.dirname({TOK!r}))
+os.environ["TOK_DIR"] = {str(tmp_path)!r}
+
+import tok
+tok._open_tty = lambda: open({str(osc_log)!r}, "a")
+tok.main()
+""")
 
     env = os.environ.copy()
     env["TOK_DIR"] = str(tmp_path)
-    env["PATH"] = f"{fake_bin}:{env.get('PATH', '')}"
-    env["DISPLAY"] = ":0"
+    # Ensure uv env vars are set so the guard passes
+    env["VIRTUAL_ENV"] = "1"
 
     proc = subprocess.Popen(
-        [TOK, "--time", "60"],
+        [sys.executable, str(wrapper), "--time", "60"],
         stdin=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=env,
@@ -109,19 +124,20 @@ def test_signal_clears_clipboard(tmp_path):
     proc.stdin.write(b"testpass\n")
     proc.stdin.flush()
 
-    # Wait for the secret to be copied
+    # Wait for the copy OSC 52 sequence to appear
+    expected_copy = base64.b64encode(b"my-secret-token").decode()
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
-        if clip_file.exists() and clip_file.stat().st_size > 0:
+        if osc_log.exists() and expected_copy in osc_log.read_text():
             break
         time.sleep(0.1)
 
-    assert clip_file.exists() and clip_file.stat().st_size > 0, \
-        "secret was not copied to fake clipboard"
+    assert osc_log.exists() and expected_copy in osc_log.read_text(), \
+        "secret was not copied via OSC 52"
 
     proc.send_signal(signal.SIGTERM)
     proc.wait(timeout=5)
 
-    # After SIGTERM the clipboard file should be empty (cleared)
-    time.sleep(0.3)
-    assert clip_file.read_text() == "", "clipboard was not cleared after signal"
+    # After SIGTERM the clear sequence (payload "!") should appear
+    content = osc_log.read_text()
+    assert "\033]52;c;!\a" in content, "clipboard was not cleared after signal"

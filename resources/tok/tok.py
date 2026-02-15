@@ -4,9 +4,9 @@
 # ///
 
 import argparse
+import base64
 import getpass
 import os
-import shutil
 import signal
 import subprocess
 import sys
@@ -21,38 +21,28 @@ TOK_DIR = Path(os.environ.get("TOK_DIR", Path.home() / ".local/share/tok"))
 TIMEOUT = 10
 
 
-def detect_clipboard():
-    if os.environ.get("WAYLAND_DISPLAY") and shutil.which("wl-copy"):
-        return "wl-copy"
-    if os.environ.get("DISPLAY") and shutil.which("xclip"):
-        return "xclip"
-    if shutil.which("clip.exe"):
-        return "clip.exe"
-    return None
+def _open_tty():
+    """Open /dev/tty for writing so OSC 52 reaches the terminal even when stdout is redirected."""
+    try:
+        return open("/dev/tty", "w")
+    except OSError:
+        return None
 
 
-def clipboard_copy(clip, data):
-    if clip == "wl-copy":
-        # echo -n <secret> | wl-copy
-        subprocess.run(["wl-copy"], input=data)
-    elif clip == "xclip":
-        # echo -n <secret> | xclip -selection clipboard
-        subprocess.run(["xclip", "-selection", "clipboard"], input=data)
-    elif clip == "clip.exe":
-        # echo -n <secret> | clip.exe
-        subprocess.run(["clip.exe"], input=data)
+def _osc52_write(payload, tty):
+    """Write an OSC 52 sequence. payload is the base64-encoded data (or empty to clear)."""
+    tty.write(f"\033]52;c;{payload}\a")
+    tty.flush()
 
 
-def clipboard_clear(clip):
-    if clip == "wl-copy":
-        # wl-copy --clear
-        subprocess.run(["wl-copy", "--clear"])
-    elif clip == "xclip":
-        # echo -n "" | xclip -selection clipboard
-        subprocess.run(["xclip", "-selection", "clipboard"], input=b"")
-    elif clip == "clip.exe":
-        # echo -n "" | clip.exe
-        subprocess.run(["clip.exe"], input=b"")
+def clipboard_copy(data, tty):
+    # printf '\033]52;c;<base64>\a' > /dev/tty
+    _osc52_write(base64.b64encode(data).decode(), tty)
+
+
+def clipboard_clear(tty):
+    # printf '\033]52;c;!\a' > /dev/tty
+    _osc52_write("!", tty)
 
 
 def read_passphrase(prompt):
@@ -153,15 +143,15 @@ def main():
         print(secret)
         sys.exit(0)
 
-    clip = detect_clipboard()
-    if not clip:
-        sys.stderr.write("Error: no clipboard tool found (install xclip, wl-copy, or use --stdout).\n")
+    tty = _open_tty()
+    if not tty:
+        sys.stderr.write("Error: cannot open /dev/tty for OSC 52 clipboard (use --stdout instead).\n")
         sys.exit(1)
 
-    clipboard_copy(clip, secret.encode())
+    clipboard_copy(secret.encode(), tty)
 
     def cleanup(*_):
-        clipboard_clear(clip)
+        clipboard_clear(tty)
         sys.stderr.write("Clipboard cleared.\n")
         sys.exit(0)
 
@@ -171,7 +161,7 @@ def main():
 
     sys.stderr.write(f"Secret copied to clipboard. Clearing in {args.time}s...\n")
     time.sleep(args.time)
-    clipboard_clear(clip)
+    clipboard_clear(tty)
     sys.stderr.write("Clipboard cleared.\n")
 
 
