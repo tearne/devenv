@@ -56,14 +56,17 @@ def clipboard_clear(clip):
 
 
 def read_passphrase(prompt):
-    """getpass when interactive, stdin.readline when piped."""
-    if sys.stdin.isatty():
+    """getpass from /dev/tty (works even when stdin is piped); falls back to stdin."""
+    try:
         return getpass.getpass(prompt, stream=sys.stderr)
-    sys.stderr.write(prompt)
-    sys.stderr.flush()
-    line = sys.stdin.readline().rstrip("\n")
-    sys.stderr.write("\n")
-    return line
+    except (OSError, EOFError):
+        # No /dev/tty (e.g. in CI/testing) — fall back to stdin
+        sys.stderr.write("Warning: password input may be echoed.\n")
+        sys.stderr.write(prompt)
+        sys.stderr.flush()
+        line = sys.stdin.readline().rstrip("\n")
+        sys.stderr.write("\n")
+        return line
 
 
 def main():

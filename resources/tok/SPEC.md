@@ -26,6 +26,7 @@ This command can be initialised with a secret (the *tok*en), which it encrypts a
 - Rather than implement a method to manage the encrypted secrets within `tok`, they are stored as individual `.enc` files in `~/.local/share/tok/` and can be manually renamed, added to, or deleted. This means the encrypted files on disk need to indicate the name of the secret they relate to (e.g. `default`).
 - Supports a `--stdout` flag that outputs the decrypted secret to stdout instead of the clipboard (skips the clipboard-clear timer). Enables automated testing and piping.
 - If interrupted (SIGINT, SIGTERM, SIGHUP) while waiting to clear the clipboard, clears it immediately before exiting.
+- When stdin is not a terminal (e.g. secret piped from a file), the passphrase is read from `/dev/tty` so it can still be entered interactively. Falls back to stdin when `/dev/tty` is unavailable (e.g. automated testing), with a warning that input may be echoed.
 
 ## Testing
 
@@ -42,3 +43,4 @@ This command can be initialised with a secret (the *tok*en), which it encrypts a
 ### Not tested
 - Clipboard copy and clear behaviour (requires display server).
 - Clipboard tool detection (X11/Wayland/Windows).
+- Passphrase prompt when stdin is piped (requires `/dev/tty`).
