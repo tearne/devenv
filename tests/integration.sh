@@ -38,8 +38,9 @@ echo "============================================================"
 # ---------------------------------------------------------------------------
 
 FAILURES=0
-fail() { echo "  FAIL: $1"; FAILURES=$((FAILURES + 1)); }
-pass() { echo "  PASS: $1"; }
+TOTAL=0
+fail() { echo "  FAIL: $1"; FAILURES=$((FAILURES + 1)); TOTAL=$((TOTAL + 1)); }
+pass() { echo "  PASS: $1"; TOTAL=$((TOTAL + 1)); }
 cexec() { incus exec "$CONTAINER" -- bash -c "$1"; }
 
 echo ""
@@ -130,7 +131,6 @@ fi
 
 # --- Summary ---
 echo ""
-TOTAL=$((18 + 2))
 if [ "$FAILURES" -eq 0 ]; then
     echo "All $TOTAL checks passed."
 else

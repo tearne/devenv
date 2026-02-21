@@ -86,14 +86,33 @@ Two test layers:
 - **Unit tests** (`tests/unit.py`) — cover file-operation logic (symlink creation, config diffing, PATH setup). Run with `uv run --with pytest pytest tests/unit.py`. No container required.
 - **Integration tests** (`tests/integration.sh`) — run the full install inside an Incus container (latest LTS Ubuntu). Requires Incus on the host. Test where possible but avoid disproportionate complexity or polluting external API.
 
-### Test Scenarios
-- Installation completes without error.
-- Each tool is callable: `htop`, `btop`, `incus`, `rustc`, `cargo`, `zellij`, `hx`, `harper-ls`, `pyright`, `ruff`.
-- Config symlinks point to the expected relative targets.
-- Config file content matches spec (e.g. `theme = "autumn"`, `dialect = "British"`).
+### Unit Test Scenarios (`tests/unit.py`)
+- Config diff:
+  - Files with equivalent content (ignoring whitespace) are treated as identical.
+  - Files with differing content produce a unified diff.
+- Helix config symlinks:
+  - Created with correct relative targets.
+  - Existing correct symlink is skipped without warning.
+  - Dangling symlink is replaced silently.
+  - Real file with different content is not overwritten; a warning is issued.
+  - Real file with whitespace-equivalent content is skipped without warning.
+- PATH setup:
+  - `~/.local/bin` export is appended to `.profile` when not present.
+  - Not appended again if already present.
+
+### Integration Test Scenarios (`tests/integration.sh`)
+- Tool installation:
+  - Installation completes without error.
+  - Each tool is callable: `htop`, `btop`, `incus`, `rustc`, `cargo`, `zellij`, `hx`, `harper-ls`, `pyright`, `ruff`.
+- Symlinks:
+  - Helix config symlinks point to the expected relative targets.
+  - `tok` symlink points to the expected relative target.
+- Config content matches spec (`theme = "autumn"`, `dialect = "British"`).
 - New terminals have `~/.local/bin` on `PATH`.
-- Existing configs are not overwritten; warnings are shown at end.
+- Existing config is not overwritten on re-run; warning is emitted.
+- `install.log` exists after a run and contains no ANSI escape sequences.
 
 ### Not Tested
 - Sudo password prompt behaviour (requires interactive terminal).
 - Incus ZFS vs dir fallback (depends on host storage setup).
+- `unattended-upgrades` configuration (requires apt and systemd).

@@ -11,6 +11,7 @@ This command can be initialised with a secret (the *tok*en), which it encrypts a
 - `tok --list` or `tok -l`
 	- Lists all available secrets
 - The flag `--time` or `-t` allows the user to specify the time (seconds) before the clipboard will be cleared.
+- The flag `--stdout` outputs the decrypted secret to stdout instead of the clipboard, skipping the clipboard-clear timer.
 
 ## Behaviour
 - Copies to the system clipboard using OSC 52 escape sequences. Works over SSH, through terminal multiplexers (e.g. Zellij), and on any OS — no clipboard tools required on the remote host.
@@ -31,11 +32,16 @@ This command can be initialised with a secret (the *tok*en), which it encrypts a
 - Tests run directly (no container needed — `tok` has no system-level side effects).
 
 ### Test scenarios
-- Encrypt/decrypt round-trip: add a secret, retrieve it with `--stdout`, verify output matches.
-- Named secrets: add multiple secrets, retrieve each by name.
+- Adding secrets:
+  - `--add <name>` stores a secret without prompting for a name.
+  - `--add` without a name exits with an error.
+- Retrieval:
+  - Encrypt/decrypt round-trip: add a secret, retrieve it with `--stdout`, verify output matches.
+  - Multiple named secrets can be added and each retrieved by name.
+  - `tok` with no arguments exits non-zero.
+  - Wrong passphrase: decryption fails with a clear error.
+  - Missing secret: requesting a non-existent name fails with a clear error.
 - Listing: `--list` shows all stored secret names.
-- Wrong passphrase: decryption fails with a clear error.
-- Missing secret: requesting a non-existent name fails with a clear error.
 - Signal cleanup: SIGTERM during the wait period produces a valid OSC 52 clear sequence (`\033]52;c;\a` — empty payload).
 
 ### Not tested
