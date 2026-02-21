@@ -195,6 +195,10 @@ def install_pyright():
         if is_installed("pyright"):
             log("already installed, skipping")
             return
+        # pyright-python downloads a prebuilt Node.js binary (via nodeenv). Node 25+
+        # requires libatomic1, which is absent from minimal Debian/Ubuntu images.
+        # https://github.com/nodejs/node/issues/60790
+        sudo("DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libatomic1")
         run("uv tool install pyright")
         log("done")
 
