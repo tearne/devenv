@@ -55,6 +55,14 @@ for tool in htop btop incus rustc cargo zellij hx harper-ls pyright ruff; do
     fi
 done
 
+# pyright-python downloads a Node.js binary at runtime; verify it actually loads
+# (command -v only checks the wrapper script exists, not that Node starts successfully)
+if cexec "export PATH=\"\$HOME/.local/bin:\$PATH\" && pyright --version" &>/dev/null; then
+    pass "pyright --version succeeds"
+else
+    fail "pyright --version succeeds"
+fi
+
 # --- Symlinks (3 checks) ---
 check_symlink() {
     local path="$1" expected="$2" label="$3"

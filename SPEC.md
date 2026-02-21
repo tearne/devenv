@@ -66,7 +66,7 @@ All latest stable versions:
 - Rust installed via RustUp (via `curl`).
 - Helix installed from latest stable `.deb` on GitHub releases.
 - `harper-ls` and Zellij installed via `cargo binstall`.
-- `pyright` and `ruff` installed via `uv`.
+- `pyright` and `ruff` installed via `uv`. `pyright` additionally requires `libatomic1` (apt) as a runtime dependency of the Node.js binary it downloads.
 - `htop`, `btop`, `incus`, `unattended-upgrades` installed non-interactively via apt (no PPA).
 - Root structure:
 ```
@@ -104,6 +104,7 @@ Two test layers:
 - Tool installation:
   - Installation completes without error.
   - Each tool is callable: `htop`, `btop`, `incus`, `rustc`, `cargo`, `zellij`, `hx`, `harper-ls`, `pyright`, `ruff`.
+  - `pyright --version` executes successfully (verifying the Node.js runtime loads, not just that the wrapper script is on PATH).
 - Symlinks:
   - Helix config symlinks point to the expected relative targets.
   - `tok` symlink points to the expected relative target.
