@@ -25,61 +25,66 @@ def run_tok(args, stdin_text="", tok_dir=None, env_extra=None):
     )
 
 
-def add_secret(tok_dir, secret, passphrase, name=None):
-    """Add a secret. If name is given it's appended (for the second+ secret)."""
+def add_secret(tok_dir, secret, passphrase, name):
+    """Add a named secret via --add <name>."""
     stdin = f"{secret}\n{passphrase}\n{passphrase}\n"
-    if name is not None:
-        stdin += f"{name}\n"
-    return run_tok(["--add"], stdin_text=stdin, tok_dir=tok_dir)
+    return run_tok(["--add", name], stdin_text=stdin, tok_dir=tok_dir)
 
 
 # ---- Tests ----
 
 
+def test_add_without_name_fails(tmp_path):
+    r = run_tok(["--add"], stdin_text="secret\npass\npass\n", tok_dir=tmp_path)
+    assert r.returncode != 0
+
+
+def test_add_with_name_stores_without_name_prompt(tmp_path):
+    """--add <name> stores the secret; only secret+passphrase+confirm needed in stdin."""
+    stdin = "my-secret\ntestpass\ntestpass\n"
+    r = run_tok(["--add", "mytoken"], stdin_text=stdin, tok_dir=tmp_path)
+    assert r.returncode == 0
+    r2 = run_tok(["--stdout", "mytoken"], stdin_text="testpass\n", tok_dir=tmp_path)
+    assert r2.returncode == 0
+    assert r2.stdout.strip() == "my-secret"
+
+
+def test_no_args_exits_nonzero(tmp_path):
+    r = run_tok([], tok_dir=tmp_path)
+    assert r.returncode != 0
+
+
 def test_encrypt_decrypt_roundtrip(tmp_path):
-    add_secret(tmp_path, "my-secret-token", "testpass")
-    r = run_tok(["--stdout"], stdin_text="testpass\n", tok_dir=tmp_path)
+    add_secret(tmp_path, "my-secret-token", "testpass", name="main")
+    r = run_tok(["--stdout", "main"], stdin_text="testpass\n", tok_dir=tmp_path)
     assert r.returncode == 0
     assert r.stdout.strip() == "my-secret-token"
 
 
 def test_named_secret_roundtrip(tmp_path):
-    add_secret(tmp_path, "my-secret-token", "testpass")
+    add_secret(tmp_path, "my-secret-token", "testpass", name="personal")
     add_secret(tmp_path, "another-secret", "testpass2", name="work")
     r = run_tok(["--stdout", "work"], stdin_text="testpass2\n", tok_dir=tmp_path)
     assert r.returncode == 0
     assert r.stdout.strip() == "another-secret"
 
 
-def test_default_still_works_after_named(tmp_path):
-    add_secret(tmp_path, "my-secret-token", "testpass")
-    add_secret(tmp_path, "another-secret", "testpass2", name="work")
-    r = run_tok(["--stdout"], stdin_text="testpass\n", tok_dir=tmp_path)
-    assert r.returncode == 0
-    assert r.stdout.strip() == "my-secret-token"
-
-
-def test_list_includes_default(tmp_path):
-    add_secret(tmp_path, "my-secret-token", "testpass")
-    r = run_tok(["--list"], tok_dir=tmp_path)
-    assert "default" in r.stdout
-
-
 def test_list_includes_named(tmp_path):
-    add_secret(tmp_path, "my-secret-token", "testpass")
+    add_secret(tmp_path, "my-secret-token", "testpass", name="personal")
     add_secret(tmp_path, "another-secret", "testpass2", name="work")
     r = run_tok(["--list"], tok_dir=tmp_path)
+    assert "personal" in r.stdout
     assert "work" in r.stdout
 
 
 def test_wrong_passphrase_rejected(tmp_path):
-    add_secret(tmp_path, "my-secret-token", "testpass")
-    r = run_tok(["--stdout"], stdin_text="wrongpass\n", tok_dir=tmp_path)
+    add_secret(tmp_path, "my-secret-token", "testpass", name="main")
+    r = run_tok(["--stdout", "main"], stdin_text="wrongpass\n", tok_dir=tmp_path)
     assert r.returncode != 0
 
 
 def test_missing_secret_rejected(tmp_path):
-    add_secret(tmp_path, "my-secret-token", "testpass")
+    add_secret(tmp_path, "my-secret-token", "testpass", name="main")
     r = run_tok(["--stdout", "nonexistent"], stdin_text="testpass\n", tok_dir=tmp_path)
     assert r.returncode != 0
 
@@ -92,7 +97,7 @@ def test_signal_clears_clipboard(tmp_path):
     """
     import base64
 
-    add_secret(tmp_path, "my-secret-token", "testpass")
+    add_secret(tmp_path, "my-secret-token", "testpass", name="main")
 
     osc_log = tmp_path / "osc_log"
 
@@ -115,7 +120,7 @@ tok.main()
     env["VIRTUAL_ENV"] = "1"
 
     proc = subprocess.Popen(
-        [sys.executable, str(wrapper), "--time", "60"],
+        [sys.executable, str(wrapper), "--time", "60", "main"],
         stdin=subprocess.PIPE,
         stderr=subprocess.PIPE,
         env=env,

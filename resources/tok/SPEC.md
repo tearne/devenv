@@ -4,15 +4,10 @@
 This command can be initialised with a secret (the *tok*en), which it encrypts against a supplied passphrase and stores on disk. When requested it prompts for the passphrase, decrypts the secret and copies it to the system clipboard via OSC 52 (a terminal escape sequence supported by most modern terminals). After that it doesn't exit, but waits for a default of 10 seconds before clearing the clipboard.
 
 ## Usage
-- `tok --add` or `tok -a`
-	- Interactively adds a new secret and passphrase
-	- The first secret is known as the 'default' secret
-	- For any subsequent secrets it asks for a single word name
-- `tok`
-	- Requests the default secret, or if one doesn't exist, prints help
-	- Prompts for the passphrase for the default secret
-- `tok <secret name>`
-	- As with `tok` but for a given secret name
+- `tok --add <name>` or `tok -a <name>`
+	- Interactively adds a new secret and passphrase under the given name
+- `tok <name>`
+	- Prompts for the passphrase and copies the named secret to the clipboard
 - `tok --list` or `tok -l`
 	- Lists all available secrets
 - The flag `--time` or `-t` allows the user to specify the time (seconds) before the clipboard will be cleared.

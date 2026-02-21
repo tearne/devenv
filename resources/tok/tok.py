@@ -71,13 +71,17 @@ def main():
                         help="output secret to stdout instead of clipboard")
     parser.add_argument("--time", "-t", type=int, default=TIMEOUT, metavar="N",
                         help="clipboard clear timeout in seconds (default: %(default)s)")
-    parser.add_argument("name", nargs="?", default="", help="secret name (default: 'default')")
+    parser.add_argument("name", nargs="?", default=None, help="secret name")
     args = parser.parse_args()
 
     TOK_DIR.mkdir(parents=True, exist_ok=True)
 
     # --- Add ---
     if args.add:
+        if not args.name:
+            sys.stderr.write("Error: a secret name is required with --add (e.g. tok --add <name>).\n")
+            sys.exit(1)
+
         secret = read_hidden("Enter secret (input hidden): ")
 
         passphrase = read_hidden("Enter passphrase: ")
@@ -87,12 +91,7 @@ def main():
             sys.stderr.write("Error: passphrases do not match.\n")
             sys.exit(1)
 
-        if not (TOK_DIR / "default.enc").is_file():
-            name = "default"
-        else:
-            sys.stderr.write("Secret name: ")
-            sys.stderr.flush()
-            name = sys.stdin.readline().rstrip("\n")
+        name = args.name
 
         # openssl enc -aes-256-cbc -pbkdf2 -salt -pass stdin -out <file>
         subprocess.run(
@@ -111,14 +110,15 @@ def main():
         sys.exit(0)
 
     # --- Retrieve ---
-    name = args.name or "default"
+    if not args.name:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    name = args.name
     enc_file = TOK_DIR / f"{name}.enc"
 
     if not enc_file.is_file():
-        if name == "default":
-            parser.print_help(sys.stderr)
-        else:
-            sys.stderr.write(f"Error: secret '{name}' not found.\n")
+        sys.stderr.write(f"Error: secret '{name}' not found.\n")
         sys.exit(1)
 
     passphrase = read_hidden("Passphrase: ")
