@@ -72,15 +72,19 @@ All latest stable versions:
 ```
 <project root>/
 ├── resources/  # Config files to be soft linked during installation
+├── tests/
+│   ├── unit.py          # Unit tests (no container required)
+│   └── integration.sh   # Incus integration test harness
 ├── bootstrap_inst.sh  # Bash entry point, bootstraps uv
 ├── install.py         # Python logic (uv single-file script)
-├── test.sh     # Incus test harness
 ```
 
 ## Verification
 
-- Tests run within an `incus` container (latest LTS Ubuntu).
-- Test where possible but avoid disproportionate complexity or polluting external API.
+Two test layers:
+
+- **Unit tests** (`tests/unit.py`) — cover file-operation logic (symlink creation, config diffing, PATH setup). Run with `uv run --with pytest pytest tests/unit.py`. No container required.
+- **Integration tests** (`tests/integration.sh`) — run the full install inside an Incus container (latest LTS Ubuntu). Requires Incus on the host. Test where possible but avoid disproportionate complexity or polluting external API.
 
 ### Test Scenarios
 - Installation completes without error.
