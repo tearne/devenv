@@ -24,6 +24,7 @@ if not (os.environ.get("VIRTUAL_ENV") or os.environ.get("UV_INTERNAL__PARENT_INT
 def install():
     install_htop()
     install_btop()
+    install_unattended_upgrades()
     install_incus()
     init_incus()
     install_rust()
@@ -56,6 +57,29 @@ def install_btop():
             return
         sudo("DEBIAN_FRONTEND=noninteractive apt-get install -y -qq btop")
         log("done")
+
+
+def install_unattended_upgrades():
+    with task("unattended-upgrades"):
+        if not is_installed("unattended-upgrades"):
+            sudo("DEBIAN_FRONTEND=noninteractive apt-get install -y -qq unattended-upgrades")
+            log("installed")
+        else:
+            log("already installed, skipping")
+
+        override = Path("/etc/apt/apt.conf.d/99unattended-upgrades-override")
+        if override.exists():
+            log("origins already configured, skipping")
+            return
+
+        # Override file extending automatic updates to all pre-existing repositories,
+        # not just security (the default in 50unattended-upgrades). The 99 prefix
+        # gives it priority; 50unattended-upgrades is left untouched by this install.
+        # To restore the default security-only behaviour, delete this file.
+        tmp = Path("/tmp/99unattended-upgrades-override")
+        tmp.write_text('Unattended-Upgrade::Allowed-Origins {\n\t"*:*";\n};\n')
+        sudo(f"mv {tmp} {override}")
+        log("origins configured")
 
 
 def install_incus():

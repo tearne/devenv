@@ -29,7 +29,7 @@ All latest stable versions:
 - Rust (`rustc`, `cargo`, `rust-analyzer`)
 - Helix editor (`hx`) with language servers: `harper-ls`, `pyright`, `ruff`
 - Zellij (`zellij`)
-- `htop`, `btop`, `incus`
+- `htop`, `btop`, `incus`, `unattended-upgrades` (configured to apply updates from all pre-existing repositories)
 
 ### Incus
 - Incus is initialised (`incus admin init`) with ZFS storage backend.
@@ -67,7 +67,7 @@ All latest stable versions:
 - Helix installed from latest stable `.deb` on GitHub releases.
 - `harper-ls` and Zellij installed via `cargo binstall`.
 - `pyright` and `ruff` installed via `uv`.
-- `htop`, `btop`, `incus` installed non-interactively via apt (no PPA).
+- `htop`, `btop`, `incus`, `unattended-upgrades` installed non-interactively via apt (no PPA).
 - Root structure:
 ```
 <project root>/
