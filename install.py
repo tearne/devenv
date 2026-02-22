@@ -109,6 +109,8 @@ def install_rust():
         if is_installed("rustc"):
             log("already installed, skipping")
             return
+        # rustup requires a C linker and standard library headers to link Rust binaries
+        sudo("DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential")
         run("curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y")
         cargo_bin = Path.home() / ".cargo" / "bin"
         os.environ["PATH"] = str(cargo_bin) + ":" + os.environ["PATH"]

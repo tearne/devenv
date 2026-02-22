@@ -63,7 +63,7 @@ All latest stable versions:
 - Python 3.12, `uv` as runtime.
 - No flags or configuration — to customise, edit `install.py` directly.
 - `uv` bootstrapped via `curl`.
-- Rust installed via RustUp (via `curl`).
+- Rust installed via RustUp (via `curl`). Requires `build-essential` (apt) as a prerequisite for the C linker and standard library headers.
 - Helix installed from latest stable `.deb` on GitHub releases.
 - `harper-ls` and Zellij installed via `cargo binstall`.
 - `pyright` and `ruff` installed via `uv`. `pyright` additionally requires `libatomic1` (apt) as a runtime dependency of the Node.js binary it downloads.
@@ -104,6 +104,7 @@ Two test layers:
 - Tool installation:
   - Installation completes without error.
   - Each tool is callable: `htop`, `btop`, `incus`, `rustc`, `cargo`, `zellij`, `hx`, `harper-ls`, `pyright`, `ruff`.
+  - `rustc` compiles and links a minimal program successfully (verifying `build-essential` is present, not just that the toolchain is on PATH).
   - `pyright --version` executes successfully (verifying the Node.js runtime loads, not just that the wrapper script is on PATH).
 - Symlinks:
   - Helix config symlinks point to the expected relative targets.

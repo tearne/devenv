@@ -63,6 +63,13 @@ else
     fail "pyright --version succeeds"
 fi
 
+# command -v only checks rustc is on PATH; compile a minimal program to verify the linker works
+if cexec "export PATH=\"\$HOME/.cargo/bin:\$PATH\" && echo 'fn main(){}' | rustc - -o /tmp/rust-smoke && /tmp/rust-smoke" &>/dev/null; then
+    pass "rustc compiles and links successfully"
+else
+    fail "rustc compiles and links successfully"
+fi
+
 # --- Symlinks (3 checks) ---
 check_symlink() {
     local path="$1" expected="$2" label="$3"
