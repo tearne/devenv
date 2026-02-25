@@ -1,8 +1,12 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = "==3.12.*"
+# dependencies = [
+#   "textual",
+# ]
 # ///
 
+import argparse
 import subprocess
 import sys
 import os
@@ -10,30 +14,81 @@ import re
 import shutil
 import getpass
 import difflib
+from dataclasses import dataclass, field
 from pathlib import Path
 from contextlib import contextmanager
-
-if not (os.environ.get("VIRTUAL_ENV") or os.environ.get("UV_INTERNAL__PARENT_INTERPRETER")):
-    print("Error: run this script via './install.py' or bootstrap_inst.sh, not directly.")
-    sys.exit(1)
+from typing import Callable
 
 # ---------------------------------------------------------------------------
-# Comment out any tool you don't want installed
+# Item model and registry
 # ---------------------------------------------------------------------------
 
-def install():
-    install_htop()
-    install_btop()
-    install_unattended_upgrades()
-    install_incus()
-    init_incus()
-    install_rust()
-    install_zellij()
-    install_helix()
-    install_harper_ls()
-    install_pyright()
-    install_ruff()
-    install_tok()
+@dataclass
+class InstallItem:
+    id: str
+    label: str
+    installer: Callable
+    parent: str | None = None
+    requires: list[str] = field(default_factory=list)
+    short_name: str = ""
+    description: str = ""
+
+    def __post_init__(self):
+        if not self.short_name:
+            self.short_name = self.id
+
+
+def _items() -> list[InstallItem]:
+    return [
+        InstallItem("htop",                  "htop",                       install_htop),
+        InstallItem("btop",                  "btop",                       install_btop),
+        InstallItem("unattended-upgrades",   "unattended-upgrades",        install_unattended_upgrades, short_name="upgrades", description="updates all apt repos, not security-only"),
+        InstallItem("incus",                 "incus",                      install_incus_and_init),
+        InstallItem("rust",                  "Rust + Cargo + rust-analyzer", install_rust),
+        InstallItem("zellij",                "Zellij",                     install_zellij,   requires=["rust"]),
+        InstallItem("helix",                 "Helix editor",               install_helix),
+        InstallItem("harper-ls",             "harper-ls",                  install_harper_ls, parent="helix", requires=["rust"], short_name="harper"),
+        InstallItem("pyright",               "pyright",                    install_pyright,   parent="helix"),
+        InstallItem("ruff",                  "ruff",                       install_ruff,      parent="helix"),
+        InstallItem("tok",                   "tok",                        install_tok),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Selection logic
+# ---------------------------------------------------------------------------
+
+def resolve_selection(items: list[InstallItem], user_selected: set[str]) -> set[str]:
+    """Return the full selection set given what the user explicitly selected.
+
+    Starts from user_selected and adds any prerequisites transitively.
+    Prerequisites not required by any user-selected item are excluded, so
+    deselecting an item automatically drops its auto-activated prerequisites
+    (unless they were also user-selected independently).
+    """
+    requires_map = {item.id: item.requires for item in items}
+    selected = set(user_selected)
+
+    changed = True
+    while changed:
+        changed = False
+        for sid in list(selected):
+            for req in requires_map.get(sid, []):
+                if req not in selected:
+                    selected.add(req)
+                    changed = True
+
+    return selected
+
+
+# ---------------------------------------------------------------------------
+# Install orchestration
+# ---------------------------------------------------------------------------
+
+def install(items: list[InstallItem], selected: set[str]) -> None:
+    for item in items:
+        if item.id in selected:
+            item.installer()
     setup_local_bin_path()
 
 
@@ -89,6 +144,11 @@ def install_incus():
             return
         sudo("DEBIAN_FRONTEND=noninteractive apt-get install -y -qq incus")
         log("done")
+
+
+def install_incus_and_init():
+    install_incus()
+    init_incus()
 
 
 def init_incus():
@@ -250,6 +310,117 @@ def install_tok():
 
 
 # ---------------------------------------------------------------------------
+# TUI
+# ---------------------------------------------------------------------------
+
+def run_selection_menu(items: list[InstallItem]) -> set[str] | None:
+    """Display the interactive selection menu.
+
+    Returns the user_selected set on confirmation, or None if the user aborted.
+    """
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.widgets import Footer, Header, SelectionList
+    from textual.widgets.selection_list import Selection
+
+    all_ids = [item.id for item in items]
+    parent_ids = {item.parent for item in items if item.parent}
+    child_ids = {item.id for item in items if item.parent}
+
+    def _make_selections() -> list[Selection]:
+        entries = []
+        for item in items:
+            indent = "  " if item.parent else ""
+            desc = f"  [dim]{item.description}[/dim]" if item.description else ""
+            entries.append(Selection(f"{indent}{item.label}{desc}", item.id, initial_state=True))
+        return entries
+
+    class InstallerApp(App):
+        BINDINGS = [
+            Binding("enter",  "confirm",      "Install",  show=True),
+            Binding("q",      "quit_abort",   "Quit",     show=True),
+            Binding("escape", "quit_abort",   "Quit",     show=False),
+            Binding("j",      "cursor_down",  "Down",     show=False),
+            Binding("k",      "cursor_up",    "Up",       show=False),
+            Binding("h",      "cursor_up",    "Up",       show=False),
+            Binding("l",      "cursor_down",  "Down",     show=False),
+        ]
+        CSS = """
+        SelectionList { height: 1fr; border: solid $accent; }
+        Header { height: 3; }
+        """
+
+        def __init__(self):
+            super().__init__()
+            self._result: set[str] | None = None
+            # Track which items the user has explicitly toggled off
+            # (starts fully selected; user_selected = all)
+            self._user_selected: set[str] = set(all_ids)
+
+        def compose(self) -> ComposeResult:
+            yield Header(show_clock=False)
+            yield SelectionList(*_make_selections(), id="menu")
+            yield Footer()
+
+        def on_mount(self) -> None:
+            self.title = "Dev Environment Setup — select items to install"
+            self.sub_title = "space/click toggle  ↑↓/jk navigate  enter install  q quit"
+
+        def on_selection_list_selection_toggled(
+            self, event: SelectionList.SelectionToggled
+        ) -> None:
+            sid = event.selection.value
+            sl: SelectionList = self.query_one("#menu")
+
+            # --- parent toggled: mirror state to all children ---
+            if sid in parent_ids:
+                new_state = sid in sl.selected
+                children = [i for i in items if i.parent == sid]
+                for child in children:
+                    if new_state and child.id not in sl.selected:
+                        sl.select(child.id)
+                    elif not new_state and child.id in sl.selected:
+                        sl.deselect(child.id)
+
+            # --- child toggled on: ensure parent is selected ---
+            if sid in child_ids:
+                item = next(i for i in items if i.id == sid)
+                if sid in sl.selected and item.parent not in sl.selected:
+                    sl.select(item.parent)
+
+            # Sync user_selected from widget state
+            self._user_selected = set(sl.selected)
+
+            # --- prerequisite auto-activation ---
+            resolved = resolve_selection(items, self._user_selected)
+            for rid in resolved - self._user_selected:
+                if rid not in sl.selected:
+                    sl.select(rid)
+            for rid in (set(all_ids) - resolved):
+                if rid in sl.selected and rid not in self._user_selected:
+                    sl.deselect(rid)
+
+        def action_confirm(self) -> None:
+            sl: SelectionList = self.query_one("#menu")
+            self._result = set(sl.selected)
+            self.exit()
+
+        def action_quit_abort(self) -> None:
+            self._result = None
+            self.exit()
+
+        def action_cursor_down(self) -> None:
+            self.query_one("#menu", SelectionList).action_cursor_down()
+
+        def action_cursor_up(self) -> None:
+            self.query_one("#menu", SelectionList).action_cursor_up()
+
+    app = InstallerApp()
+    app.run()
+    return app._result
+
+
+# ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
 
@@ -372,8 +543,97 @@ def is_installed(cmd):
 # Main
 # ---------------------------------------------------------------------------
 
+def _parse_args(items: list[InstallItem]) -> set[str] | None:
+    """Parse CLI arguments and return the user_selected set (as canonical ids).
+
+    Returns None if the TUI should be launched (no flag given, stdin is a TTY).
+    Exits with an error if no flag is given and stdin is not a TTY.
+    """
+    all_ids = {item.id for item in items}
+    name_to_id = {item.id: item.id for item in items}
+    name_to_id |= {item.short_name: item.id for item in items}
+    valid_names = ", ".join(sorted(name_to_id))
+
+    parser = argparse.ArgumentParser(
+        description="Dev environment installer",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "-l", "--list", dest="list", action="store_true",
+        help="list available items and exit",
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--all", dest="all", action="store_true",
+        help="install everything without showing the menu",
+    )
+    group.add_argument(
+        "--only", nargs="+", metavar="ITEM",
+        help=f"install only the listed items (valid: {valid_names})",
+    )
+    group.add_argument(
+        "--skip", nargs="+", metavar="ITEM",
+        help=f"install everything except the listed items (valid: {valid_names})",
+    )
+    args = parser.parse_args()
+
+    if args.list:
+        _print_item_list(items)
+        sys.exit(0)
+
+    def _validate(names):
+        unknown = set(names) - name_to_id.keys()
+        if unknown:
+            parser.error(f"unknown item(s): {', '.join(sorted(unknown))}. Valid: {valid_names}")
+
+    def _resolve(names) -> set[str]:
+        return {name_to_id[n] for n in names}
+
+    if args.all:
+        return all_ids
+    if args.only:
+        _validate(args.only)
+        return _resolve(args.only)
+    if args.skip:
+        _validate(args.skip)
+        return all_ids - _resolve(args.skip)
+
+    # No flag given
+    if not sys.stdin.isatty():
+        print(
+            "Error: no TTY detected and no selection flag given.\n"
+            "Rerun with one of: --all, --only <item> [...], --skip <item> [...]",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return None  # signal: launch TUI
+
+
+def _print_item_list(items: list[InstallItem]) -> None:
+    id_w = max(len(item.id) for item in items)
+    sn_w = max(len(item.short_name) for item in items if item.short_name != item.id) or 0
+    print(f"{'ID':<{id_w}}  {'SHORT NAME':<{sn_w}}  DESCRIPTION")
+    print(f"{'-' * id_w}  {'-' * sn_w}  -----------")
+    for item in items:
+        sn = item.short_name if item.short_name != item.id else ""
+        print(f"{item.id:<{id_w}}  {sn:<{sn_w}}  {item.description}")
+
+
 def main():
     global _logfile
+
+    items = _items()
+    user_selected = _parse_args(items)
+
+    if user_selected is None:
+        user_selected = run_selection_menu(items)
+        if user_selected is None:
+            print("Aborted.")
+            sys.exit(0)
+
+    selected = resolve_selection(items, user_selected)
+
     _logfile = open(SCRIPT_DIR / "install.log", "w")
 
     with task("Dev environment setup"):
@@ -382,7 +642,7 @@ def main():
         with task("apt update"):
             sudo("DEBIAN_FRONTEND=noninteractive apt-get update -qq")
 
-        install()
+        install(items, selected)
 
     if _warnings:
         log("")
@@ -398,4 +658,7 @@ def main():
 
 
 if __name__ == "__main__":
+    if not os.environ.get("VIRTUAL_ENV"):
+        print("Error: no virtual environment detected. Run this script via './install.py' (requires uv), or activate a virtual environment first.")
+        sys.exit(100)
     main()

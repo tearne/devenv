@@ -6,7 +6,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Satisfy the module-level guard before importing install
 os.environ.setdefault("VIRTUAL_ENV", "1")
 
 import pytest
@@ -117,6 +116,177 @@ def test_install_tok_does_not_overwrite_real_file(tmp_path):
     install.install_tok()
     assert dst.read_text() == "existing content"
     assert len(install._warnings) == 1
+
+
+# ---------------------------------------------------------------------------
+# resolve_selection
+# ---------------------------------------------------------------------------
+
+def _make_items():
+    """Minimal item registry for selection tests:
+      a (no requires)
+      b (requires a)
+      c (requires a)
+      d (no requires)
+    """
+    noop = lambda: None
+    return [
+        install.InstallItem("a", "A", noop),
+        install.InstallItem("b", "B", noop, requires=["a"]),
+        install.InstallItem("c", "C", noop, requires=["a"]),
+        install.InstallItem("d", "D", noop),
+    ]
+
+
+def test_resolve_activates_prerequisite():
+    items = _make_items()
+    selected = install.resolve_selection(items, {"b"})
+    assert "a" in selected
+
+
+def test_resolve_user_selected_item_kept():
+    items = _make_items()
+    selected = install.resolve_selection(items, {"b"})
+    assert "b" in selected
+
+
+def test_resolve_unrelated_item_excluded():
+    items = _make_items()
+    selected = install.resolve_selection(items, {"b"})
+    assert "d" not in selected
+
+
+def test_resolve_deselect_drops_auto_prerequisite():
+    # b was selected (auto-activating a); deselecting b removes a
+    items = _make_items()
+    selected = install.resolve_selection(items, set())
+    assert "a" not in selected
+    assert "b" not in selected
+
+
+def test_resolve_shared_prerequisite_kept_while_one_dependent_remains():
+    # b and c both require a; deselecting b (only c remains) keeps a
+    items = _make_items()
+    selected = install.resolve_selection(items, {"c"})
+    assert "a" in selected
+
+
+def test_resolve_prerequisite_kept_when_independently_selected():
+    # user explicitly selected both a and b; deselecting b (user_selected={"a"}) keeps a
+    items = _make_items()
+    selected = install.resolve_selection(items, {"a"})
+    assert "a" in selected
+    assert "b" not in selected
+
+
+def test_resolve_all_items_selected_by_default():
+    items = _make_items()
+    all_ids = {item.id for item in items}
+    selected = install.resolve_selection(items, all_ids)
+    assert selected == all_ids
+
+
+def test_resolve_only_flag_subset():
+    items = _make_items()
+    # --only d: no prerequisites needed
+    selected = install.resolve_selection(items, {"d"})
+    assert selected == {"d"}
+
+
+def test_resolve_skip_flag_subset():
+    items = _make_items()
+    all_ids = {item.id for item in items}
+    # --skip b,c: remove b and c from user_selected; a no longer required
+    user_selected = all_ids - {"b", "c"}
+    selected = install.resolve_selection(items, user_selected)
+    assert "b" not in selected
+    assert "c" not in selected
+    assert "a" in selected   # a is still user-selected independently
+    assert "d" in selected
+
+
+def test_resolve_skip_removes_prerequisite_when_no_longer_needed():
+    items = _make_items()
+    # --skip a,b,c: none require anything; a,b,c all gone
+    user_selected = {"d"}
+    selected = install.resolve_selection(items, user_selected)
+    assert selected == {"d"}
+
+
+# ---------------------------------------------------------------------------
+# InstallItem short_name default
+# ---------------------------------------------------------------------------
+
+def test_short_name_defaults_to_id():
+    item = install.InstallItem("my-item", "My Item", lambda: None)
+    assert item.short_name == "my-item"
+
+
+def test_short_name_explicit():
+    item = install.InstallItem("my-item", "My Item", lambda: None, short_name="myitem")
+    assert item.short_name == "myitem"
+
+
+# ---------------------------------------------------------------------------
+# _parse_args — short names and --list
+# ---------------------------------------------------------------------------
+
+def _named_items():
+    noop = lambda: None
+    return [
+        install.InstallItem("long-name", "Long Name", noop, short_name="short"),
+        install.InstallItem("other", "Other", noop),
+    ]
+
+
+def test_parse_args_only_accepts_short_name(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["install.py", "--only", "short"])
+    result = install._parse_args(_named_items())
+    assert result == {"long-name"}
+
+
+def test_parse_args_only_accepts_full_id(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["install.py", "--only", "long-name"])
+    result = install._parse_args(_named_items())
+    assert result == {"long-name"}
+
+
+def test_parse_args_skip_resolves_short_name(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["install.py", "--skip", "short"])
+    result = install._parse_args(_named_items())
+    assert result == {"other"}
+
+
+def test_parse_args_rejects_unknown_name(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["install.py", "--only", "unknown"])
+    with pytest.raises(SystemExit):
+        install._parse_args(_named_items())
+
+
+def test_parse_args_list_exits(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["install.py", "--list"])
+    with pytest.raises(SystemExit) as exc:
+        install._parse_args(_named_items())
+    assert exc.value.code == 0
+
+
+def test_parse_args_list_output(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["install.py", "--list"])
+    with pytest.raises(SystemExit):
+        install._parse_args(_named_items())
+    out = capsys.readouterr().out
+    assert "long-name" in out
+    assert "short" in out
+
+
+def test_parse_args_list_shows_description(monkeypatch, capsys):
+    noop = lambda: None
+    items = [install.InstallItem("foo", "Foo", noop, short_name="f", description="a desc")]
+    monkeypatch.setattr(sys, "argv", ["install.py", "--list"])
+    with pytest.raises(SystemExit):
+        install._parse_args(items)
+    out = capsys.readouterr().out
+    assert "a desc" in out
 
 
 # ---------------------------------------------------------------------------

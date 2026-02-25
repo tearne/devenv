@@ -16,7 +16,9 @@ This project contains items to help set up a development environment on Ubuntu/D
 ## Behaviour
 
 ### Installation Process
-- After an optional initial password prompt, no further user input is required.
+- Before installation begins, a full-screen interactive menu is presented listing all installable items, all selected by default. The user may deselect items before confirming.
+- Passing `--all`, `--only <item> [...]`, or `--skip <item> [...]` bypasses the menu for non-interactive use. Items may be specified by full id or short name. If no flag is given and stdin is not a TTY, the script exits with an error directing the user to rerun with one of the three flags.
+- `-l`/`--list` prints a plain-text table of all installable items (id, short name, description) and exits without installing anything.
 - Prompts for sudo password once at start. Skips the prompt when running as root or when sudo credentials are already cached (passwordless sudo).
 - If a tool is already installed, it is skipped.
 - On failure, exits immediately. The last log line identifies the failed command and its exit code.
@@ -24,12 +26,20 @@ This project contains items to help set up a development environment on Ubuntu/D
 - Installs its own dependencies at runtime where possible (e.g. `uv`, `curl`).
 
 ### Tools Installed
-All latest stable versions:
-- `uv`
-- Rust (`rustc`, `cargo`, `rust-analyzer`)
-- Helix editor (`hx`) with language servers: `harper-ls`, `pyright`, `ruff`
+All latest stable versions. The following are the default (all-selected) items; each can be individually included or excluded via the menu or CLI flags:
+- `htop`, `btop`, `incus`, `unattended-upgrades` (`upgrades`) — unattended-upgrades updates all apt repos, not security-only
+- Rust (`rustc`, `cargo`, `rust-analyzer`) — prerequisite for `zellij` and `harper-ls`
 - Zellij (`zellij`)
-- `htop`, `btop`, `incus`, `unattended-upgrades` (configured to apply updates from all pre-existing repositories)
+- Helix editor (`hx`), with LSPs as a nested group:
+  - `harper-ls` (short name: `harper`)
+  - `pyright`
+  - `ruff`
+- `tok`
+
+`uv` is always installed (it bootstraps the script itself) and is not a selectable item.
+
+Item interdependencies:
+- Selecting `zellij` or `harper-ls` auto-selects `rust`; deselecting both auto-deselects `rust` unless it was independently selected.
 
 ### Incus
 - Incus is initialised (`incus admin init`) with ZFS storage backend.
@@ -60,8 +70,7 @@ All latest stable versions:
 ## Constraints
 
 - POS style (see `DEFINITIONS.md`).
-- Python 3.12, `uv` as runtime.
-- No flags or configuration — to customise, edit `install.py` directly.
+- Python 3.12, `uv` as runtime. `textual` as approved third-party dependency (TUI).
 - `uv` bootstrapped via `curl`.
 - Rust installed via RustUp (via `curl`). Requires `build-essential` (apt) as a prerequisite for the C linker and standard library headers.
 - Helix installed from latest stable `.deb` on GitHub releases.
@@ -99,6 +108,16 @@ Two test layers:
 - PATH setup:
   - `~/.local/bin` export is appended to `.profile` when not present.
   - Not appended again if already present.
+- Selection resolution:
+  - Selecting an item with a prerequisite auto-selects the prerequisite.
+  - Deselecting an item removes its auto-selected prerequisite when no other selected item needs it.
+  - A prerequisite independently selected by the user is retained when dependent items are deselected.
+  - `--only` and `--skip` flag subsets are resolved correctly.
+- Item short names:
+  - `short_name` defaults to `id` when not explicitly set.
+  - `--only`/`--skip` accept both full id and short name.
+  - Unknown names are rejected with an error.
+  - `--list` output contains id, short name, and description.
 
 ### Integration Test Scenarios (`tests/integration.sh`)
 - Tool installation:
