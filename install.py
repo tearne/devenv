@@ -2,11 +2,13 @@
 # /// script
 # requires-python = "==3.12.*"
 # dependencies = [
+#   "rich",
 #   "textual",
 # ]
 # ///
 
 import argparse
+import atexit
 import subprocess
 import sys
 import os
@@ -284,7 +286,7 @@ def setup_local_bin_path():
         if profile.exists() and marker in profile.read_text():
             log("already configured")
             return
-        with open(profile, "a") as f:
+        with profile.open("a") as f:
             f.write(f'\n# Added by install.py\nexport {marker}\n')
         log(f"appended to {profile}")
 
@@ -498,8 +500,8 @@ def run(cmd):
         sys.exit(1)
 
 
-def sudo_ok(cmd) -> bool:
-    """Run a command with sudo privileges; return True if it exits 0, False otherwise."""
+def _sudo_popen(cmd: str) -> subprocess.Popen:
+    """Open a privileged subprocess with stdin configured. Caller must close stdin."""
     if os.geteuid() == 0:
         full = cmd
     elif _password is None:
@@ -513,6 +515,12 @@ def sudo_ok(cmd) -> bool:
     )
     if _password is not None and os.geteuid() != 0:
         proc.stdin.write(_password + "\n")
+    return proc
+
+
+def sudo_ok(cmd) -> bool:
+    """Run a command with sudo privileges; return True if it exits 0, False otherwise."""
+    proc = _sudo_popen(cmd)
     proc.stdin.close()
     proc.wait()
     return proc.returncode == 0
@@ -525,13 +533,7 @@ def sudo(cmd):
         run(f"sudo {cmd}")
     else:
         log(f"\033[2m$ {cmd}\033[0m")
-        full = f"sudo -S {cmd}"
-        proc = subprocess.Popen(
-            full, shell=True, text=True,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        )
-        proc.stdin.write(_password + "\n")
+        proc = _sudo_popen(cmd)
         proc.stdin.close()
         _stream_output(proc)
         if proc.returncode != 0:
@@ -632,13 +634,16 @@ def _parse_args(items: list[InstallItem]) -> set[str] | None:
 
 
 def _print_item_list(items: list[InstallItem]) -> None:
-    id_w = max(len(item.id) for item in items)
-    sn_w = max(len(item.short_name) for item in items if item.short_name != item.id) or 0
-    print(f"{'ID':<{id_w}}  {'SHORT NAME':<{sn_w}}  DESCRIPTION")
-    print(f"{'-' * id_w}  {'-' * sn_w}  -----------")
+    from rich.console import Console
+    from rich.table import Table
+    table = Table(show_header=True)
+    table.add_column("ID")
+    table.add_column("SHORT NAME")
+    table.add_column("DESCRIPTION")
     for item in items:
         sn = item.short_name if item.short_name != item.id else ""
-        print(f"{item.id:<{id_w}}  {sn:<{sn_w}}  {item.description}")
+        table.add_row(item.id, sn, item.description)
+    Console().print(table)
 
 
 def main():
@@ -655,7 +660,8 @@ def main():
 
     selected = resolve_selection(items, user_selected)
 
-    _logfile = open(SCRIPT_DIR / "install.log", "w")
+    _logfile = (SCRIPT_DIR / "install.log").open("w")
+    atexit.register(_logfile.close)
 
     with task("Dev environment setup"):
         init_password()
@@ -675,7 +681,6 @@ def main():
                     log(f"    {line}")
 
     log("Setup complete.")
-    _logfile.close()
 
 
 if __name__ == "__main__":
