@@ -28,8 +28,10 @@ This project contains items to help set up a development environment on Ubuntu/D
 ### Tools Installed
 All latest stable versions. The following are the default (all-selected) items; each can be individually included or excluded via the menu or CLI flags:
 - `htop`, `btop`, `incus`, `unattended-upgrades` (`upgrades`) — unattended-upgrades updates all apt repos, not security-only
-- Rust (`rustc`, `cargo`, `rust-analyzer`) — prerequisite for `zellij` and `harper-ls`
+- Rust (`rustc`, `cargo`, `rust-analyzer`) — prerequisite for `zellij`, `harper-ls`, `delta`, and `difft`
 - Zellij (`zellij`)
+- `delta` (git-delta) — syntax-highlighted git diff pager; exposes `git dd` and `git dl` aliases
+- `difft` (difftastic) — structural diff tool; exposes `git dft` alias
 - Helix editor (`hx`), with LSPs as a nested group:
   - `harper-ls` (short name: `harper`)
   - `pyright`
@@ -39,7 +41,7 @@ All latest stable versions. The following are the default (all-selected) items; 
 `uv` is always installed (it bootstraps the script itself) and is not a selectable item.
 
 Item interdependencies:
-- Selecting `zellij` or `harper-ls` auto-selects `rust`; deselecting both auto-deselects `rust` unless it was independently selected.
+- Selecting `zellij`, `harper-ls`, `delta`, or `difft` auto-selects `rust`; deselecting all of them auto-deselects `rust` unless it was independently selected.
 
 ### Incus
 - Incus is initialised (`incus admin init`) with ZFS storage backend.
@@ -75,7 +77,8 @@ Item interdependencies:
 - `uv` bootstrapped via `curl`.
 - Rust installed via RustUp (via `curl`). Requires `build-essential` (apt) as a prerequisite for the C linker and standard library headers.
 - Helix installed from latest stable `.deb` on GitHub releases.
-- `harper-ls` and Zellij installed via `cargo binstall`.
+- `harper-ls`, Zellij, `delta` (`git-delta`), and `difft` (`difftastic`) installed via `cargo binstall`.
+- Git configured via `git config --global` for `delta` and `difft` (aliases only; default git behaviour unchanged): `alias.dd`, `alias.dl` (delta); `difftool.difftastic.cmd`, `difftool.prompt`, `alias.dft` (difftastic).
 - `pyright` and `ruff` installed via `uv`. `pyright` additionally requires `libatomic1` (apt) as a runtime dependency of the Node.js binary it downloads.
 - `htop`, `btop`, `incus`, `unattended-upgrades` installed non-interactively via apt (no PPA).
 - Root structure:

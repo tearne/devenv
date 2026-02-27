@@ -48,6 +48,8 @@ def _items() -> list[InstallItem]:
         InstallItem("incus",                 "incus",                      install_incus_and_init),
         InstallItem("rust",                  "Rust + Cargo + rust-analyzer", install_rust),
         InstallItem("zellij",                "Zellij",                     install_zellij,   requires=["rust"]),
+        InstallItem("delta",                 "delta",                      install_delta,    requires=["rust"]),
+        InstallItem("difft",                 "difftastic",                 install_difft,    requires=["rust"]),
         InstallItem("helix",                 "Helix editor",               install_helix),
         InstallItem("harper-ls",             "harper-ls",                  install_harper_ls, parent="helix", requires=["rust"], short_name="harper"),
         InstallItem("pyright",               "pyright",                    install_pyright,   parent="helix"),
@@ -198,6 +200,31 @@ def install_zellij():
         ensure_cargo_binstall()
         run("cargo binstall --no-confirm zellij")
         log("done")
+
+
+def install_delta():
+    with task("delta"):
+        if is_installed("delta"):
+            log("already installed, skipping")
+        else:
+            ensure_cargo_binstall()
+            run("cargo binstall --no-confirm git-delta")
+            log("done")
+        run(r"""git config --global alias.dd '!f() { git diff "$@" | delta; }; f'""")
+        run(r"""git config --global alias.dl '!f() { git log -p "$@" | delta; }; f'""")
+
+
+def install_difft():
+    with task("difftastic"):
+        if is_installed("difft"):
+            log("already installed, skipping")
+        else:
+            ensure_cargo_binstall()
+            run("cargo binstall --no-confirm difft")
+            log("done")
+        run("""git config --global difftool.difftastic.cmd 'difft "$LOCAL" "$REMOTE"'""")
+        run("git config --global difftool.prompt false")
+        run("git config --global alias.dft 'difftool --tool=difftastic --no-prompt'")
 
 
 def install_helix():
