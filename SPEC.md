@@ -17,8 +17,8 @@ This project contains items to help set up a development environment on Ubuntu/D
 
 ### Installation Process
 - Before installation begins, a full-screen interactive menu is presented listing all installable items, all selected by default. The user may deselect items before confirming with Enter.
-- Passing `--all`, `--only <item> [...]`, or `--skip <item> [...]` bypasses the menu for non-interactive use. Items may be specified by full id or short name. If no flag is given and stdin is not a TTY, the script exits with an error directing the user to rerun with one of the three flags.
-- `-l`/`--list` prints a plain-text table of all installable items (id, short name, description) and exits without installing anything.
+- Passing `--all`, `--only <item> [...]`, or `--skip <item> [...]` bypasses the menu for non-interactive use. Items are specified by full id. If no flag is given and stdin is not a TTY, the script exits with an error directing the user to rerun with one of the three flags.
+- `-l`/`--list` prints a plain-text table of all installable items (id, description) and exits without installing anything.
 - Prompts for sudo password once at start. Skips the prompt when running as root or when sudo credentials are already cached (passwordless sudo).
 - If a tool is already installed, it is skipped.
 - On failure, exits immediately. The last log line identifies the failed command and its exit code.
@@ -26,22 +26,34 @@ This project contains items to help set up a development environment on Ubuntu/D
 - Installs its own dependencies at runtime where possible (e.g. `uv`, `curl`).
 
 ### Tools Installed
-All latest stable versions. The following are the default (all-selected) items; each can be individually included or excluded via the menu or CLI flags:
-- `htop`, `btop`, `incus`, `unattended-upgrades` (`upgrades`) — unattended-upgrades updates all apt repos, not security-only
-- Rust (`rustc`, `cargo`, `rust-analyzer`) — prerequisite for `zellij`, `harper-ls`, `delta`, and `difft`
-- Zellij (`zellij`)
+All latest stable versions. Items are organised into visual groups in the TUI. Each item can be individually included or excluded via the menu or CLI flags; all are selected by default.
+
+System group: `htop`, `btop`, `incus`, `tok`, and `unattended-upgrades` with optional child:
+- `all-upgrades` — configures automatic updates to extend to all apt repositories (not just security)
+
+Rust group — `rust` (rustup/rustc/cargo) as group parent, with optional children:
+- `rust-analyzer` — installed via `rustup component add rust-analyzer`
+- `cargo-binstall` — required by `zellij`, `delta`, `difft`, and `harper-ls`
+
+Standalone (require `cargo-binstall`):
+- `zellij`
 - `delta` (git-delta) — syntax-highlighted git diff pager; exposes `git dd` and `git dl` aliases
 - `difft` (difftastic) — structural diff tool; exposes `git dft` alias
-- Helix editor (`hx`), with LSPs as a nested group:
-  - `harper-ls` (short name: `harper`)
-  - `pyright`
-  - `ruff`
-- `tok`
+
+Helix group — `helix` (`hx`) as group parent, with optional children:
+- `biome` — JSON language server
+- `harper-ls`
+- `pyright`
+- `ruff`
 
 `uv` is always installed (it bootstraps the script itself) and is not a selectable item.
 
 Item interdependencies:
-- Selecting `zellij`, `harper-ls`, `delta`, or `difft` auto-selects `rust`; deselecting all of them auto-deselects `rust` unless it was independently selected.
+- `InstallItem` has a `group` field (visual-only section label) and a `parent` field (install hierarchy).
+- Within-group parent/child toggling is real-time in the TUI: toggling a parent mirrors state to its children; selecting a child ensures its parent is selected.
+- Cross-group `requires` links are resolved at confirmation time (Enter): if items were added to satisfy dependencies, an apt-style summary is shown and the user is prompted to confirm before installation begins.
+- For non-interactive invocations (`--all`/`--only`/`--skip`), auto-resolved dependencies emit a warning to stdout and the log.
+- `zellij`, `delta`, `difft`, and `harper-ls` require `cargo-binstall`; `cargo-binstall` (child of `rust`) transitively requires `rust`.
 
 ### Incus
 - Incus is initialised (`incus admin init`) with ZFS storage backend.
@@ -65,6 +77,7 @@ Item interdependencies:
   - Soft-wrap for markdown files
   - `harper-ls` configured with British English dictionary
   - Language server config for installed LSPs
+  - `biome` configured as the language server for JSON files
 
 ### Logging
 - Structured/hierarchical log output showing current stage/sub-stage and process output.
@@ -77,7 +90,8 @@ Item interdependencies:
 - `uv` bootstrapped via `curl`.
 - Rust installed via RustUp (via `curl`). Requires `build-essential` (apt) as a prerequisite for the C linker and standard library headers.
 - Helix installed from latest stable `.deb` on GitHub releases.
-- `harper-ls`, Zellij, `delta` (`git-delta`), and `difft` (`difftastic`) installed via `cargo binstall`.
+- `harper-ls`, Zellij, `delta` (`git-delta`), and `difft` (`difftastic`) installed via `cargo binstall` (crate names: `harper-ls`, `zellij`, `git-delta`, `difftastic`).
+- `biome` downloaded directly from GitHub releases (architecture-appropriate binary: `biome-linux-x64` or `biome-linux-arm64`); placed in `~/.local/bin/`.
 - Git configured via `git config --global` for `delta` and `difft` (aliases only; default git behaviour unchanged): `alias.dd`, `alias.dl` (delta); `difftool.difftastic.cmd`, `difftool.prompt`, `alias.dft` (difftastic).
 - `pyright` and `ruff` installed via `uv`. `pyright` additionally requires `libatomic1` (apt) as a runtime dependency of the Node.js binary it downloads.
 - `htop`, `btop`, `incus`, `unattended-upgrades` installed non-interactively via apt (no PPA).
@@ -114,14 +128,13 @@ Two test layers:
   - Not appended again if already present.
 - Selection resolution:
   - Selecting an item with a prerequisite auto-selects the prerequisite.
+  - Selecting a child item implicitly requires its parent.
   - Deselecting an item removes its auto-selected prerequisite when no other selected item needs it.
   - A prerequisite independently selected by the user is retained when dependent items are deselected.
   - `--only` and `--skip` flag subsets are resolved correctly.
-- Item short names:
-  - `short_name` defaults to `id` when not explicitly set.
-  - `--only`/`--skip` accept both full id and short name.
-  - Unknown names are rejected with an error.
-  - `--list` output contains id, short name, and description.
+  - `InstallItem` `group` field defaults to `None`.
+- `--only`/`--skip` accept full ids only; unknown ids are rejected with an error.
+- `--list` output contains id and description.
 
 ### Integration Test Scenarios (`tests/integration.sh`)
 - Tool installation:
@@ -140,4 +153,4 @@ Two test layers:
 ### Not Tested
 - Sudo password prompt behaviour (requires interactive terminal).
 - Incus ZFS vs dir fallback (depends on host storage setup).
-- `unattended-upgrades` configuration (requires apt and systemd).
+- `unattended-upgrades` and `all-upgrades` configuration (requires apt and systemd).

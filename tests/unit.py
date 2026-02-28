@@ -131,10 +131,10 @@ def _make_items():
     """
     noop = lambda: None
     return [
-        install.InstallItem("a", "A", noop),
-        install.InstallItem("b", "B", noop, requires=["a"]),
-        install.InstallItem("c", "C", noop, requires=["a"]),
-        install.InstallItem("d", "D", noop),
+        install.InstallItem("a", noop),
+        install.InstallItem("b", noop, requires=["a"]),
+        install.InstallItem("c", noop, requires=["a"]),
+        install.InstallItem("d", noop),
     ]
 
 
@@ -213,48 +213,42 @@ def test_resolve_skip_removes_prerequisite_when_no_longer_needed():
     assert selected == {"d"}
 
 
-# ---------------------------------------------------------------------------
-# InstallItem short_name default
-# ---------------------------------------------------------------------------
-
-def test_short_name_defaults_to_id():
-    item = install.InstallItem("my-item", "My Item", lambda: None)
-    assert item.short_name == "my-item"
-
-
-def test_short_name_explicit():
-    item = install.InstallItem("my-item", "My Item", lambda: None, short_name="myitem")
-    assert item.short_name == "myitem"
+def test_resolve_child_implicitly_requires_parent():
+    # Selecting a child (with parent set, no explicit requires) pulls in the parent
+    noop = lambda: None
+    items = [
+        install.InstallItem("parent-item", noop),
+        install.InstallItem("child-item", noop, parent="parent-item"),
+    ]
+    selected = install.resolve_selection(items, {"child-item"})
+    assert "parent-item" in selected
 
 
 # ---------------------------------------------------------------------------
-# _parse_args — short names and --list
+# InstallItem
+# ---------------------------------------------------------------------------
+
+def test_group_defaults_to_none():
+    item = install.InstallItem("my-item", lambda: None)
+    assert item.group is None
+
+
+# ---------------------------------------------------------------------------
+# _parse_args
 # ---------------------------------------------------------------------------
 
 def _named_items():
     noop = lambda: None
     return [
-        install.InstallItem("long-name", "Long Name", noop, short_name="short"),
-        install.InstallItem("other", "Other", noop),
+        install.InstallItem("long-name", noop),
+        install.InstallItem("other", noop),
     ]
-
-
-def test_parse_args_only_accepts_short_name(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["install.py", "--only", "short"])
-    result = install._parse_args(_named_items())
-    assert result == {"long-name"}
 
 
 def test_parse_args_only_accepts_full_id(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["install.py", "--only", "long-name"])
     result = install._parse_args(_named_items())
     assert result == {"long-name"}
-
-
-def test_parse_args_skip_resolves_short_name(monkeypatch):
-    monkeypatch.setattr(sys, "argv", ["install.py", "--skip", "short"])
-    result = install._parse_args(_named_items())
-    assert result == {"other"}
 
 
 def test_parse_args_rejects_unknown_name(monkeypatch):
@@ -276,12 +270,11 @@ def test_parse_args_list_output(monkeypatch, capsys):
         install._parse_args(_named_items())
     out = capsys.readouterr().out
     assert "long-name" in out
-    assert "short" in out
 
 
 def test_parse_args_list_shows_description(monkeypatch, capsys):
     noop = lambda: None
-    items = [install.InstallItem("foo", "Foo", noop, short_name="f", description="a desc")]
+    items = [install.InstallItem("foo", noop, description="a desc")]
     monkeypatch.setattr(sys, "argv", ["install.py", "--list"])
     with pytest.raises(SystemExit):
         install._parse_args(items)

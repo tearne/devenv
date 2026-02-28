@@ -8,6 +8,7 @@
 # ///
 
 import argparse
+import platform
 import atexit
 import subprocess
 import sys
@@ -28,33 +29,36 @@ from typing import Callable
 @dataclass
 class InstallItem:
     id: str
-    label: str
     installer: Callable
     parent: str | None = None
     requires: list[str] = field(default_factory=list)
-    short_name: str = ""
     description: str = ""
-
-    def __post_init__(self):
-        if not self.short_name:
-            self.short_name = self.id
+    group: str | None = None
 
 
 def _items() -> list[InstallItem]:
     return [
-        InstallItem("htop",                  "htop",                       install_htop),
-        InstallItem("btop",                  "btop",                       install_btop),
-        InstallItem("unattended-upgrades",   "unattended-upgrades",        install_unattended_upgrades, short_name="upgrades", description="updates all apt repos, not security-only"),
-        InstallItem("incus",                 "incus",                      install_incus_and_init),
-        InstallItem("rust",                  "Rust + Cargo + rust-analyzer", install_rust),
-        InstallItem("zellij",                "Zellij",                     install_zellij,   requires=["rust"]),
-        InstallItem("delta",                 "delta",                      install_delta,    requires=["rust"]),
-        InstallItem("difft",                 "difftastic",                 install_difft,    requires=["rust"]),
-        InstallItem("helix",                 "Helix editor",               install_helix),
-        InstallItem("harper-ls",             "harper-ls",                  install_harper_ls, parent="helix", requires=["rust"], short_name="harper"),
-        InstallItem("pyright",               "pyright",                    install_pyright,   parent="helix"),
-        InstallItem("ruff",                  "ruff",                       install_ruff,      parent="helix"),
-        InstallItem("tok",                   "tok",                        install_tok),
+        # System
+        InstallItem("htop",                install_htop,                group="System"),
+        InstallItem("btop",                install_btop,                group="System"),
+        InstallItem("unattended-upgrades", install_unattended_upgrades, group="System", description="automatic security updates (default)"),
+        InstallItem("all-upgrades",        install_all_upgrades,        group="System", parent="unattended-upgrades", description="extend automatic updates to all apt repositories"),
+        InstallItem("incus",               install_incus_and_init,      group="System"),
+        InstallItem("tok",                 install_tok,                 group="System"),
+        # Rust
+        InstallItem("rust",                install_rust,                group="Rust"),
+        InstallItem("rust-analyzer",       install_rust_analyzer,       group="Rust", parent="rust"),
+        InstallItem("cargo-binstall",      install_cargo_binstall,      group="Rust", parent="rust"),
+        # Standalone
+        InstallItem("zellij",              install_zellij,              requires=["cargo-binstall"]),
+        InstallItem("delta",               install_delta,               requires=["cargo-binstall"]),
+        InstallItem("difft",               install_difft,               requires=["cargo-binstall"]),
+        # Helix
+        InstallItem("helix",               install_helix,               group="Helix"),
+        InstallItem("biome",               install_biome,               group="Helix", parent="helix"),
+        InstallItem("harper-ls",           install_harper_ls,           group="Helix", parent="helix", requires=["cargo-binstall"]),
+        InstallItem("pyright",             install_pyright,             group="Helix", parent="helix"),
+        InstallItem("ruff",                install_ruff,                group="Helix", parent="helix"),
     ]
 
 
@@ -70,7 +74,10 @@ def resolve_selection(items: list[InstallItem], user_selected: set[str]) -> set[
     deselecting an item automatically drops its auto-activated prerequisites
     (unless they were also user-selected independently).
     """
-    requires_map = {item.id: item.requires for item in items}
+    requires_map = {
+        item.id: item.requires + ([item.parent] if item.parent else [])
+        for item in items
+    }
     selected = set(user_selected)
 
     changed = True
@@ -126,6 +133,9 @@ def install_unattended_upgrades():
         else:
             log("already installed, skipping")
 
+
+def install_all_upgrades():
+    with task("all-upgrades"):
         override = Path("/etc/apt/apt.conf.d/99unattended-upgrades-override")
         if override.exists():
             log("origins already configured, skipping")
@@ -174,22 +184,38 @@ def install_rust():
         sudo("DEBIAN_FRONTEND=noninteractive apt-get install -y -qq build-essential")
         log("done")
 
-    with task("Rust + Cargo + rust-analyzer"):
+    with task("Rust"):
         if is_installed("rustc"):
             log("already installed, skipping")
             return
         run("curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y")
         cargo_bin = Path.home() / ".cargo" / "bin"
         os.environ["PATH"] = str(cargo_bin) + ":" + os.environ["PATH"]
+        log("done")
+
+
+def install_rust_analyzer():
+    with task("rust-analyzer"):
+        if is_installed("rust-analyzer"):
+            log("already installed, skipping")
+            return
         run("rustup component add rust-analyzer")
+        log("done")
+
+
+def install_cargo_binstall():
+    with task("cargo-binstall"):
+        if is_installed("cargo-binstall"):
+            log("already installed, skipping")
+            return
+        run("curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash")
         log("done")
 
 
 def ensure_cargo_binstall():
     if is_installed("cargo-binstall"):
         return
-    with task("cargo-binstall"):
-        run("curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash")
+    install_cargo_binstall()
 
 
 def install_zellij():
@@ -220,7 +246,7 @@ def install_difft():
             log("already installed, skipping")
         else:
             ensure_cargo_binstall()
-            run("cargo binstall --no-confirm difft")
+            run("cargo binstall --no-confirm difftastic")
             log("done")
         run("""git config --global difftool.difftastic.cmd 'difft "$LOCAL" "$REMOTE"'""")
         run("git config --global difftool.prompt false")
@@ -272,6 +298,19 @@ def _link_helix_config():
             rel = os.path.relpath(src, dst.parent)
             os.symlink(rel, dst)
             log(f"symlinked {dst} -> {rel}")
+
+
+def install_biome():
+    with task("biome"):
+        if is_installed("biome"):
+            log("already installed, skipping")
+            return
+        arch = "arm64" if platform.machine() == "aarch64" else "x64"
+        dst = Path.home() / ".local" / "bin" / "biome"
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        run(f"""curl -s https://api.github.com/repos/biomejs/biome/releases/latest | grep -oP '"browser_download_url": "\\K[^"]*biome-linux-{arch}(?=")' | xargs curl -Lo {dst}""")
+        run(f"chmod +x {dst}")
+        log("done")
 
 
 def install_harper_ls():
@@ -358,10 +397,20 @@ def run_selection_menu(items: list[InstallItem]) -> set[str] | None:
 
     def _make_selections() -> list[Selection]:
         entries = []
+        current_group = object()  # sentinel distinct from None and any string
         for item in items:
-            indent = "  " if item.parent else ""
+            if item.group != current_group:
+                current_group = item.group
+                if item.group is not None:
+                    entries.append(Selection(
+                        f"[bold]{item.group}[/bold]",
+                        f"__group_{item.group}__",
+                        initial_state=False,
+                        disabled=True,
+                    ))
+            indent = "    " if item.parent else ("  " if item.group else "")
             desc = f"  [dim]{item.description}[/dim]" if item.description else ""
-            entries.append(Selection(f"{indent}{item.label}{desc}", item.id, initial_state=True))
+            entries.append(Selection(f"{indent}{item.id}{desc}", item.id, initial_state=True))
         return entries
 
     class InstallerApp(App):
@@ -400,6 +449,8 @@ def run_selection_menu(items: list[InstallItem]) -> set[str] | None:
             self, event: SelectionList.SelectionToggled
         ) -> None:
             sid = event.selection.value
+            if str(sid).startswith("__group_"):
+                return
             sl: SelectionList = self.query_one("#menu")
 
             # --- parent toggled: mirror state to all children ---
@@ -418,21 +469,12 @@ def run_selection_menu(items: list[InstallItem]) -> set[str] | None:
                 if sid in sl.selected and item.parent not in sl.selected:
                     sl.select(item.parent)
 
-            # Sync user_selected from widget state
-            self._user_selected = set(sl.selected)
-
-            # --- prerequisite auto-activation ---
-            resolved = resolve_selection(items, self._user_selected)
-            for rid in resolved - self._user_selected:
-                if rid not in sl.selected:
-                    sl.select(rid)
-            for rid in (set(all_ids) - resolved):
-                if rid in sl.selected and rid not in self._user_selected:
-                    sl.deselect(rid)
+            # Sync user_selected from widget state (cross-group requires resolved later)
+            self._user_selected = {v for v in sl.selected if not str(v).startswith("__group_")}
 
         def action_confirm(self) -> None:
             sl: SelectionList = self.query_one("#menu")
-            self._result = set(sl.selected)
+            self._result = {v for v in sl.selected if not str(v).startswith("__group_")}
             self.exit()
 
         def action_quit_abort(self) -> None:
@@ -601,7 +643,6 @@ def _parse_args(items: list[InstallItem]) -> set[str] | None:
     """
     all_ids = {item.id for item in items}
     name_to_id = {item.id: item.id for item in items}
-    name_to_id |= {item.short_name: item.id for item in items}
     valid_names = ", ".join(sorted(name_to_id))
 
     parser = argparse.ArgumentParser(
@@ -665,11 +706,9 @@ def _print_item_list(items: list[InstallItem]) -> None:
     from rich.table import Table
     table = Table(show_header=True)
     table.add_column("ID")
-    table.add_column("SHORT NAME")
     table.add_column("DESCRIPTION")
     for item in items:
-        sn = item.short_name if item.short_name != item.id else ""
-        table.add_row(item.id, sn, item.description)
+        table.add_row(item.id, item.description)
     Console().print(table)
 
 
@@ -684,8 +723,20 @@ def main():
         if user_selected is None:
             print("Aborted.")
             sys.exit(0)
-
-    selected = resolve_selection(items, user_selected)
+        selected = resolve_selection(items, user_selected)
+        added = selected - user_selected
+        if added:
+            print("The following items will be added to satisfy dependencies:")
+            for item_id in sorted(added):
+                print(f"  + {item_id}")
+            ans = input("Continue? [Y/n] ").strip().lower()
+            if ans in ("n", "no"):
+                print("Aborted.")
+                sys.exit(0)
+    else:
+        selected = resolve_selection(items, user_selected)
+        for item_id in sorted(selected - user_selected):
+            warn(f"auto-added {item_id} (required dependency)")
 
     _logfile = (SCRIPT_DIR / "install.log").open("w")
     atexit.register(_logfile.close)
