@@ -248,9 +248,11 @@ def install_difft():
             ensure_cargo_binstall()
             run("cargo binstall --no-confirm difftastic")
             log("done")
-        run("""git config --global difftool.difftastic.cmd 'difft "$LOCAL" "$REMOTE"'""")
+        run("""git config --global difftool.difftastic.cmd '$HOME/.cargo/bin/difft "$LOCAL" "$REMOTE"'""")
         run("git config --global difftool.prompt false")
         run("git config --global alias.dft 'difftool --tool=difftastic --no-prompt'")
+        run("git config --global difftastic.color always")
+        run("git config --global pager.difftool true")
 
 
 def install_helix():

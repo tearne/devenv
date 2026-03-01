@@ -92,7 +92,7 @@ Item interdependencies:
 - Helix installed from latest stable `.deb` on GitHub releases.
 - `harper-ls`, Zellij, `delta` (`git-delta`), and `difft` (`difftastic`) installed via `cargo binstall` (crate names: `harper-ls`, `zellij`, `git-delta`, `difftastic`).
 - `biome` downloaded directly from GitHub releases (architecture-appropriate binary: `biome-linux-x64` or `biome-linux-arm64`); placed in `~/.local/bin/`.
-- Git configured via `git config --global` for `delta` and `difft` (aliases only; default git behaviour unchanged): `alias.dd`, `alias.dl` (delta); `difftool.difftastic.cmd`, `difftool.prompt`, `alias.dft` (difftastic).
+- Git configured via `git config --global` for `delta` and `difft` (aliases only; default git behaviour unchanged): `alias.dd`, `alias.dl` (delta); `difftool.difftastic.cmd` (uses `$HOME/.cargo/bin/difft` to avoid PATH issues in non-interactive shells), `difftool.prompt`, `alias.dft`, `difftastic.color = always`, `pager.difftool = true` (difftastic).
 - `pyright` and `ruff` installed via `uv`. `pyright` additionally requires `libatomic1` (apt) as a runtime dependency of the Node.js binary it downloads.
 - `htop`, `btop`, `incus`, `unattended-upgrades` installed non-interactively via apt (no PPA).
 - Root structure:
