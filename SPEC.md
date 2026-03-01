@@ -46,6 +46,7 @@ All latest stable versions. Items are organised into a visual tree in the TUI. E
   helix (hx)
     biome — JSON language server
     harper-ls
+    markdown-oxide — Markdown language server (replaces marksman)
     pyright
     ruff
 ```
@@ -58,7 +59,7 @@ Item interdependencies:
 - Install-order dependencies are declared via `requires` on `InstallItem`. `parent` is visual-only and does not imply an install dependency.
 - `requires` links are resolved at confirmation time (Enter): if items were added to satisfy dependencies, an apt-style summary is shown and the user is prompted to confirm before installation begins.
 - For non-interactive invocations (`--all`/`--only`/`--skip`), auto-resolved dependencies emit a warning to stdout and the log.
-- `zellij`, `delta`, `difft`, and `harper-ls` require `cargo-binstall`; `rust-analyzer` and `cargo-binstall` require `rust`; `all-upgrades` requires `unattended-upgrades`.
+- `zellij`, `delta`, `difft`, `harper-ls`, and `markdown-oxide` require `cargo-binstall`; `rust-analyzer` and `cargo-binstall` require `rust`; `all-upgrades` requires `unattended-upgrades`.
 
 ### Incus
 - Incus is initialised (`incus admin init`) with ZFS storage backend.
@@ -95,7 +96,7 @@ Item interdependencies:
 - `uv` bootstrapped via `curl`.
 - Rust installed via RustUp (via `curl`). Requires `build-essential` (apt) as a prerequisite for the C linker and standard library headers.
 - Helix installed from latest stable `.deb` on GitHub releases.
-- `harper-ls`, Zellij, `delta` (`git-delta`), and `difft` (`difftastic`) installed via `cargo binstall` (crate names: `harper-ls`, `zellij`, `git-delta`, `difftastic`).
+- `harper-ls`, Zellij, `delta` (`git-delta`), and `difft` (`difftastic`) installed via `cargo binstall` (crate names: `harper-ls`, `zellij`, `git-delta`, `difftastic`). `markdown-oxide` installed via `cargo binstall --git https://github.com/feel-ix-343/markdown-oxide` (not published on crates.io).
 - `biome` downloaded directly from GitHub releases (architecture-appropriate binary: `biome-linux-x64` or `biome-linux-arm64`); placed in `~/.local/bin/`.
 - Git configured via `git config --global` for `delta` and `difft` (aliases only; default git behaviour unchanged): `alias.dd`, `alias.dl` (delta); `difftool.difftastic.cmd` (uses `$HOME/.cargo/bin/difft` to avoid PATH issues in non-interactive shells), `difftool.prompt`, `alias.dft`, `difftastic.color = always`, `pager.difftool = true` (difftastic).
 - `pyright` and `ruff` installed via `uv`. `pyright` additionally requires `libatomic1` (apt) as a runtime dependency of the Node.js binary it downloads.

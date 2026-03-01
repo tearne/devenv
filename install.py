@@ -71,6 +71,7 @@ def _items() -> list[InstallItem]:
         InstallItem("helix",               install_helix,               parent="Helix"),
         InstallItem("biome",               install_biome,               parent="helix"),
         InstallItem("harper-ls",           install_harper_ls,           parent="helix",   requires=["cargo-binstall"]),
+        InstallItem("markdown-oxide",      install_markdown_oxide,      parent="helix",   requires=["cargo-binstall"]),
         InstallItem("pyright",             install_pyright,             parent="helix"),
         InstallItem("ruff",                install_ruff,                parent="helix"),
     ]
@@ -336,6 +337,16 @@ def install_harper_ls():
             return
         ensure_cargo_binstall()
         run("cargo binstall --no-confirm harper-ls")
+        log("done")
+
+
+def install_markdown_oxide():
+    with task("markdown-oxide"):
+        if is_installed("markdown-oxide"):
+            log("already installed, skipping")
+            return
+        ensure_cargo_binstall()
+        run("cargo binstall --no-confirm --git 'https://github.com/feel-ix-343/markdown-oxide' markdown-oxide")
         log("done")
 
 

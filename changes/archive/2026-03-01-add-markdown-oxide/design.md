@@ -15,15 +15,15 @@ This follows the same `cargo-binstall` pattern as `harper-ls` and others, so
 `requires=["cargo-binstall"]` applies as usual.
 
 ### Item registration
-Added to the Helix group after `harper-ls`:
+Added after `harper-ls` using the unified `parent` field:
 
 ```python
-InstallItem("markdown-oxide", install_markdown_oxide, group="Helix", parent="helix", requires=["cargo-binstall"]),
+InstallItem("markdown-oxide", install_markdown_oxide, parent="helix", requires=["cargo-binstall"]),
 ```
 
 ### Helix config (`resources/helix/languages.toml`)
-Add a language-server entry and append `markdown-oxide` to the markdown
-language-servers list:
+Add a language-server entry and replace `marksman` with `markdown-oxide` in
+the markdown language-servers list:
 
 ```toml
 [language-server.markdown-oxide]
@@ -32,7 +32,7 @@ command = "markdown-oxide"
 [[language]]
 name = "markdown"
 soft-wrap.enable = true
-language-servers = ["marksman", "harper-ls", "markdown-oxide"]
+language-servers = ["markdown-oxide", "harper-ls"]
 ```
 
 ### SPEC.md
@@ -41,8 +41,8 @@ language-servers = ["marksman", "harper-ls", "markdown-oxide"]
 
 ## Tasks
 
-1. Add `install_markdown_oxide()` to `install.py`
-2. Register the item in `all_items()` (after `harper-ls`)
-3. Add language-server entry and update markdown language in `languages.toml`
-4. Update `SPEC.md`
-5. Confirm implementation complete and ready to archive
+1. ~~Add `install_markdown_oxide()` to `install.py`~~
+2. ~~Register the item in `all_items()` (after `harper-ls`)~~
+3. ~~Add language-server entry and update markdown language in `languages.toml`~~
+4. ~~Update `SPEC.md`~~
+5. ~~Confirm implementation complete and ready to archive~~
