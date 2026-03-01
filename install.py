@@ -27,38 +27,52 @@ from typing import Callable
 # ---------------------------------------------------------------------------
 
 @dataclass
+class Group:
+    name: str
+    parent: str | None = None  # group name or item id; None = top-level
+
+
+@dataclass
 class InstallItem:
     id: str
     installer: Callable
-    parent: str | None = None
+    parent: str | None = None  # group name or item id; None = top-level
     requires: list[str] = field(default_factory=list)
-    description: str = ""
-    group: str | None = None
+
+
+def _groups() -> list[Group]:
+    return [
+        Group("System"),
+        Group("Resource", parent="System"),
+        Group("Rust"),
+        Group("Git"),
+        Group("Helix"),
+    ]
 
 
 def _items() -> list[InstallItem]:
     return [
         # System
-        InstallItem("htop",                install_htop,                group="System"),
-        InstallItem("btop",                install_btop,                group="System"),
-        InstallItem("unattended-upgrades", install_unattended_upgrades, group="System", description="automatic security updates (default)"),
-        InstallItem("all-upgrades",        install_all_upgrades,        group="System", parent="unattended-upgrades", description="extend automatic updates to all apt repositories"),
-        InstallItem("incus",               install_incus_and_init,      group="System"),
-        InstallItem("tok",                 install_tok,                 group="System"),
+        InstallItem("htop",                install_htop,                parent="Resource"),
+        InstallItem("btop",                install_btop,                parent="Resource"),
+        InstallItem("unattended-upgrades", install_unattended_upgrades, parent="System"),
+        InstallItem("all-upgrades",        install_all_upgrades,        parent="unattended-upgrades", requires=["unattended-upgrades"]),
+        InstallItem("incus",               install_incus_and_init,      parent="System"),
+        InstallItem("tok",                 install_tok,                 parent="System"),
+        InstallItem("zellij",              install_zellij,              parent="System",  requires=["cargo-binstall"]),
         # Rust
-        InstallItem("rust",                install_rust,                group="Rust"),
-        InstallItem("rust-analyzer",       install_rust_analyzer,       group="Rust", parent="rust"),
-        InstallItem("cargo-binstall",      install_cargo_binstall,      group="Rust", parent="rust"),
-        # Standalone
-        InstallItem("zellij",              install_zellij,              requires=["cargo-binstall"]),
-        InstallItem("delta",               install_delta,               requires=["cargo-binstall"]),
-        InstallItem("difft",               install_difft,               requires=["cargo-binstall"]),
+        InstallItem("rust",                install_rust,                parent="Rust"),
+        InstallItem("rust-analyzer",       install_rust_analyzer,       parent="rust",    requires=["rust"]),
+        InstallItem("cargo-binstall",      install_cargo_binstall,      parent="rust",    requires=["rust"]),
+        # Git
+        InstallItem("delta",               install_delta,               parent="Git",     requires=["cargo-binstall"]),
+        InstallItem("difft",               install_difft,               parent="Git",     requires=["cargo-binstall"]),
         # Helix
-        InstallItem("helix",               install_helix,               group="Helix"),
-        InstallItem("biome",               install_biome,               group="Helix", parent="helix"),
-        InstallItem("harper-ls",           install_harper_ls,           group="Helix", parent="helix", requires=["cargo-binstall"]),
-        InstallItem("pyright",             install_pyright,             group="Helix", parent="helix"),
-        InstallItem("ruff",                install_ruff,                group="Helix", parent="helix"),
+        InstallItem("helix",               install_helix,               parent="Helix"),
+        InstallItem("biome",               install_biome,               parent="helix"),
+        InstallItem("harper-ls",           install_harper_ls,           parent="helix",   requires=["cargo-binstall"]),
+        InstallItem("pyright",             install_pyright,             parent="helix"),
+        InstallItem("ruff",                install_ruff,                parent="helix"),
     ]
 
 
@@ -75,7 +89,7 @@ def resolve_selection(items: list[InstallItem], user_selected: set[str]) -> set[
     (unless they were also user-selected independently).
     """
     requires_map = {
-        item.id: item.requires + ([item.parent] if item.parent else [])
+        item.id: item.requires
         for item in items
     }
     selected = set(user_selected)
@@ -383,36 +397,69 @@ def install_tok():
 # TUI
 # ---------------------------------------------------------------------------
 
-def run_selection_menu(items: list[InstallItem]) -> set[str] | None:
+def run_selection_menu(items: list[InstallItem], groups: list[Group]) -> set[str] | None:
     """Display the interactive selection menu.
 
     Returns the user_selected set on confirmation, or None if the user aborted.
     """
+    from collections import defaultdict
     from textual.app import App, ComposeResult
     from textual.binding import Binding
     from textual.widgets import Footer, Header, SelectionList, Static
     from textual.widgets.selection_list import Selection
 
     all_ids = [item.id for item in items]
-    parent_ids = {item.parent for item in items if item.parent}
-    child_ids = {item.id for item in items if item.parent}
+    group_names = {g.name for g in groups}
+
+    # children_of: parent_id (or None) -> [(node_id, is_group), ...]
+    children_of: dict[str | None, list[tuple[str, bool]]] = defaultdict(list)
+    for g in groups:
+        children_of[g.parent].append((g.name, True))
+    for item in items:
+        children_of[item.parent].append((item.id, False))
+
+    # parent_of: node_id -> parent_id (or None)
+    parent_of: dict[str, str | None] = {}
+    for g in groups:
+        parent_of[g.name] = g.parent
+    for item in items:
+        parent_of[item.id] = item.parent
+
+    def _sel_id(node_id: str, is_group: bool) -> str:
+        return f"__group_{node_id}__" if is_group else node_id
+
+    def _collect_descendants(node_id: str) -> list[str]:
+        result = []
+        for child_id, child_is_group in children_of.get(node_id, []):
+            result.append(_sel_id(child_id, child_is_group))
+            result.extend(_collect_descendants(child_id))
+        return result
+
+    def _collect_ancestors(node_id: str) -> list[str]:
+        result = []
+        current = node_id
+        while parent_of.get(current) is not None:
+            p = parent_of[current]
+            result.append(_sel_id(p, p in group_names))
+            current = p
+        return result
 
     def _make_selections() -> list[Selection]:
         entries = []
-        current_group = object()  # sentinel distinct from None and any string
-        for item in items:
-            if item.group != current_group:
-                current_group = item.group
-                if item.group is not None:
-                    entries.append(Selection(
-                        f"[bold]{item.group}[/bold]",
-                        f"__group_{item.group}__",
-                        initial_state=False,
-                        disabled=True,
-                    ))
-            indent = "    " if item.parent else ("  " if item.group else "")
-            desc = f"  [dim]{item.description}[/dim]" if item.description else ""
-            entries.append(Selection(f"{indent}{item.id}{desc}", item.id, initial_state=True))
+        def visit(node_id: str, is_group: bool, depth: int) -> None:
+            indent = "  " * depth
+            if is_group:
+                entries.append(Selection(
+                    f"{indent}[bold]\\[{node_id}][/bold]",
+                    f"__group_{node_id}__",
+                    initial_state=True,
+                ))
+            else:
+                entries.append(Selection(f"{indent}{node_id}", node_id, initial_state=True))
+            for child_id, child_is_group in children_of.get(node_id, []):
+                visit(child_id, child_is_group, depth + 1)
+        for node_id, is_group in children_of[None]:
+            visit(node_id, is_group, 0)
         return entries
 
     class InstallerApp(App):
@@ -434,8 +481,6 @@ def run_selection_menu(items: list[InstallItem]) -> set[str] | None:
         def __init__(self):
             super().__init__()
             self._result: set[str] | None = None
-            # Track which items the user has explicitly toggled off
-            # (starts fully selected; user_selected = all)
             self._user_selected: set[str] = set(all_ids)
 
         def compose(self) -> ComposeResult:
@@ -450,28 +495,23 @@ def run_selection_menu(items: list[InstallItem]) -> set[str] | None:
         def on_selection_list_selection_toggled(
             self, event: SelectionList.SelectionToggled
         ) -> None:
-            sid = event.selection.value
-            if str(sid).startswith("__group_"):
-                return
+            sid = str(event.selection.value)
             sl: SelectionList = self.query_one("#menu")
+            new_state = sid in sl.selected
+            is_group_header = sid.startswith("__group_")
+            node_id = sid.removeprefix("__group_").removesuffix("__") if is_group_header else sid
 
-            # --- parent toggled: mirror state to all children ---
-            if sid in parent_ids:
-                new_state = sid in sl.selected
-                children = [i for i in items if i.parent == sid]
-                for child in children:
-                    if new_state and child.id not in sl.selected:
-                        sl.select(child.id)
-                    elif not new_state and child.id in sl.selected:
-                        sl.deselect(child.id)
+            for desc_sid in _collect_descendants(node_id):
+                if new_state and desc_sid not in sl.selected:
+                    sl.select(desc_sid)
+                elif not new_state and desc_sid in sl.selected:
+                    sl.deselect(desc_sid)
 
-            # --- child toggled on: ensure parent is selected ---
-            if sid in child_ids:
-                item = next(i for i in items if i.id == sid)
-                if sid in sl.selected and item.parent not in sl.selected:
-                    sl.select(item.parent)
+            if new_state:
+                for anc_sid in _collect_ancestors(node_id):
+                    if anc_sid not in sl.selected:
+                        sl.select(anc_sid)
 
-            # Sync user_selected from widget state (cross-group requires resolved later)
             self._user_selected = {v for v in sl.selected if not str(v).startswith("__group_")}
 
         def action_confirm(self) -> None:
@@ -708,9 +748,8 @@ def _print_item_list(items: list[InstallItem]) -> None:
     from rich.table import Table
     table = Table(show_header=True)
     table.add_column("ID")
-    table.add_column("DESCRIPTION")
     for item in items:
-        table.add_row(item.id, item.description)
+        table.add_row(item.id)
     Console().print(table)
 
 
@@ -718,10 +757,11 @@ def main():
     global _logfile
 
     items = _items()
+    groups = _groups()
     user_selected = _parse_args(items)
 
     if user_selected is None:
-        user_selected = run_selection_menu(items)
+        user_selected = run_selection_menu(items, groups)
         if user_selected is None:
             print("Aborted.")
             sys.exit(0)

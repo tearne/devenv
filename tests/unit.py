@@ -213,24 +213,38 @@ def test_resolve_skip_removes_prerequisite_when_no_longer_needed():
     assert selected == {"d"}
 
 
-def test_resolve_child_implicitly_requires_parent():
-    # Selecting a child (with parent set, no explicit requires) pulls in the parent
+# ---------------------------------------------------------------------------
+# InstallItem
+# ---------------------------------------------------------------------------
+
+def test_parent_defaults_to_none():
+    item = install.InstallItem("my-item", lambda: None)
+    assert item.parent is None
+
+
+def test_parent_field_alone_does_not_add_install_dependency():
+    # parent is visual-only; install deps require explicit requires=
     noop = lambda: None
     items = [
         install.InstallItem("parent-item", noop),
         install.InstallItem("child-item", noop, parent="parent-item"),
     ]
     selected = install.resolve_selection(items, {"child-item"})
-    assert "parent-item" in selected
+    assert "parent-item" not in selected
 
 
-# ---------------------------------------------------------------------------
-# InstallItem
-# ---------------------------------------------------------------------------
-
-def test_group_defaults_to_none():
-    item = install.InstallItem("my-item", lambda: None)
-    assert item.group is None
+def test_resolve_transitive_requires():
+    # c requires b; b requires a — selecting c pulls in both
+    noop = lambda: None
+    items = [
+        install.InstallItem("a", noop),
+        install.InstallItem("b", noop, requires=["a"]),
+        install.InstallItem("c", noop, requires=["b"]),
+    ]
+    selected = install.resolve_selection(items, {"c"})
+    assert "a" in selected
+    assert "b" in selected
+    assert "c" in selected
 
 
 # ---------------------------------------------------------------------------
@@ -272,14 +286,14 @@ def test_parse_args_list_output(monkeypatch, capsys):
     assert "long-name" in out
 
 
-def test_parse_args_list_shows_description(monkeypatch, capsys):
+def test_parse_args_list_shows_id(monkeypatch, capsys):
     noop = lambda: None
-    items = [install.InstallItem("foo", noop, description="a desc")]
+    items = [install.InstallItem("foo", noop)]
     monkeypatch.setattr(sys, "argv", ["install.py", "--list"])
     with pytest.raises(SystemExit):
         install._parse_args(items)
     out = capsys.readouterr().out
-    assert "a desc" in out
+    assert "foo" in out
 
 
 # ---------------------------------------------------------------------------

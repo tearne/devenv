@@ -18,7 +18,7 @@ This project contains items to help set up a development environment on Ubuntu/D
 ### Installation Process
 - Before installation begins, a full-screen interactive menu is presented listing all installable items, all selected by default. The user may deselect items before confirming with Enter.
 - Passing `--all`, `--only <item> [...]`, or `--skip <item> [...]` bypasses the menu for non-interactive use. Items are specified by full id. If no flag is given and stdin is not a TTY, the script exits with an error directing the user to rerun with one of the three flags.
-- `-l`/`--list` prints a plain-text table of all installable items (id, description) and exits without installing anything.
+- `-l`/`--list` prints a plain-text table of all installable item ids and exits without installing anything.
 - Prompts for sudo password once at start. Skips the prompt when running as root or when sudo credentials are already cached (passwordless sudo).
 - If a tool is already installed, it is skipped.
 - On failure, exits immediately. The last log line identifies the failed command and its exit code.
@@ -26,34 +26,39 @@ This project contains items to help set up a development environment on Ubuntu/D
 - Installs its own dependencies at runtime where possible (e.g. `uv`, `curl`).
 
 ### Tools Installed
-All latest stable versions. Items are organised into visual groups in the TUI. Each item can be individually included or excluded via the menu or CLI flags; all are selected by default.
+All latest stable versions. Items are organised into a visual tree in the TUI. Each item can be individually included or excluded via the menu or CLI flags; all are selected by default.
 
-System group: `htop`, `btop`, `incus`, `tok`, and `unattended-upgrades` with optional child:
-- `all-upgrades` — configures automatic updates to extend to all apt repositories (not just security)
-
-Rust group — `rust` (rustup/rustc/cargo) as group parent, with optional children:
-- `rust-analyzer` — installed via `rustup component add rust-analyzer`
-- `cargo-binstall` — required by `zellij`, `delta`, `difft`, and `harper-ls`
-
-Standalone (require `cargo-binstall`):
-- `zellij`
-- `delta` (git-delta) — syntax-highlighted git diff pager; exposes `git dd` and `git dl` aliases
-- `difft` (difftastic) — structural diff tool; exposes `git dft` alias
-
-Helix group — `helix` (`hx`) as group parent, with optional children:
-- `biome` — JSON language server
-- `harper-ls`
-- `pyright`
-- `ruff`
+```
+[System]
+  [Resource]
+    htop, btop
+  unattended-upgrades
+    all-upgrades — extends automatic updates to all apt repositories (not just security)
+  incus, tok, zellij
+[Rust]
+  rust (rustup/rustc/cargo)
+    rust-analyzer
+    cargo-binstall
+[Git]
+  delta (git-delta) — syntax-highlighted git diff pager; exposes git dd and git dl aliases
+  difft (difftastic) — structural diff tool; exposes git dft alias
+[Helix]
+  helix (hx)
+    biome — JSON language server
+    harper-ls
+    pyright
+    ruff
+```
 
 `uv` is always installed (it bootstraps the script itself) and is not a selectable item.
 
 Item interdependencies:
-- `InstallItem` has a `group` field (visual-only section label) and a `parent` field (install hierarchy).
-- Within-group parent/child toggling is real-time in the TUI: toggling a parent mirrors state to its children; selecting a child ensures its parent is selected.
-- Cross-group `requires` links are resolved at confirmation time (Enter): if items were added to satisfy dependencies, an apt-style summary is shown and the user is prompted to confirm before installation begins.
+- Items and groups form a tree. `InstallItem` has a `parent` field (group name or item id) for visual nesting; `Group` likewise. `InstallItem` has no description field; items are identified by id only.
+- Toggling any node (group header or item) in the TUI recursively mirrors state to all descendants. Toggling a node on ensures all ancestors are also selected. Group headers are displayed as `[Name]`.
+- Install-order dependencies are declared via `requires` on `InstallItem`. `parent` is visual-only and does not imply an install dependency.
+- `requires` links are resolved at confirmation time (Enter): if items were added to satisfy dependencies, an apt-style summary is shown and the user is prompted to confirm before installation begins.
 - For non-interactive invocations (`--all`/`--only`/`--skip`), auto-resolved dependencies emit a warning to stdout and the log.
-- `zellij`, `delta`, `difft`, and `harper-ls` require `cargo-binstall`; `cargo-binstall` (child of `rust`) transitively requires `rust`.
+- `zellij`, `delta`, `difft`, and `harper-ls` require `cargo-binstall`; `rust-analyzer` and `cargo-binstall` require `rust`; `all-upgrades` requires `unattended-upgrades`.
 
 ### Incus
 - Incus is initialised (`incus admin init`) with ZFS storage backend.
@@ -128,13 +133,14 @@ Two test layers:
   - Not appended again if already present.
 - Selection resolution:
   - Selecting an item with a prerequisite auto-selects the prerequisite.
-  - Selecting a child item implicitly requires its parent.
+  - `parent` field alone does not create an install dependency; only `requires` does.
+  - Prerequisites are resolved transitively (if C requires B and B requires A, selecting C pulls in both).
   - Deselecting an item removes its auto-selected prerequisite when no other selected item needs it.
   - A prerequisite independently selected by the user is retained when dependent items are deselected.
   - `--only` and `--skip` flag subsets are resolved correctly.
-  - `InstallItem` `group` field defaults to `None`.
+  - `InstallItem` `parent` field defaults to `None`.
 - `--only`/`--skip` accept full ids only; unknown ids are rejected with an error.
-- `--list` output contains id and description.
+- `--list` output contains id only.
 
 ### Integration Test Scenarios (`tests/integration.sh`)
 - Tool installation:
