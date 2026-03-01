@@ -20,7 +20,7 @@ This project contains items to help set up a development environment on Ubuntu/D
 - Passing `--all`, `--only <item> [...]`, or `--skip <item> [...]` bypasses the menu for non-interactive use. Items are specified by full id. If no flag is given and stdin is not a TTY, the script exits with an error directing the user to rerun with one of the three flags.
 - `-l`/`--list` prints a plain-text table of all installable item ids and exits without installing anything.
 - Prompts for sudo password once at start. Skips the prompt when running as root or when sudo credentials are already cached (passwordless sudo).
-- If a tool is already installed, it is skipped.
+- If a tool is already installed, its installation step is skipped. Idempotent configuration (e.g. git aliases) is applied unconditionally so it is correct on re-runs.
 - On failure, exits immediately. The last log line identifies the failed command and its exit code.
 - Each installation step displays the shell command being run, without scrolling previous output off screen.
 - Installs its own dependencies at runtime where possible (e.g. `uv`, `curl`).
@@ -91,16 +91,25 @@ Item interdependencies:
 
 ## Constraints
 
-- POS style (see `DEFINITIONS.md`).
-- Python 3.12, `uv` as runtime. `textual` as approved third-party dependency (TUI).
-- `uv` bootstrapped via `curl`.
-- Rust installed via RustUp (via `curl`). Requires `build-essential` (apt) as a prerequisite for the C linker and standard library headers.
-- Helix installed from latest stable `.deb` on GitHub releases.
-- `harper-ls`, Zellij, `delta` (`git-delta`), and `difft` (`difftastic`) installed via `cargo binstall` (crate names: `harper-ls`, `zellij`, `git-delta`, `difftastic`). `markdown-oxide` installed via `cargo binstall --git https://github.com/feel-ix-343/markdown-oxide` (not published on crates.io).
-- `biome` downloaded directly from GitHub releases (architecture-appropriate binary: `biome-linux-x64` or `biome-linux-arm64`); placed in `~/.local/bin/`.
-- Git configured via `git config --global` for `delta` and `difft` (aliases only; default git behaviour unchanged): `alias.dd`, `alias.dl` (delta); `difftool.difftastic.cmd` (uses `$HOME/.cargo/bin/difft` to avoid PATH issues in non-interactive shells), `difftool.prompt`, `alias.dft`, `difftastic.color = always`, `pager.difftool = true` (difftastic).
-- `pyright` and `ruff` installed via `uv`. `pyright` additionally requires `libatomic1` (apt) as a runtime dependency of the Node.js binary it downloads.
-- `htop`, `btop`, `incus`, `unattended-upgrades` installed non-interactively via apt (no PPA).
+- POS style (see `DEFINITIONS.md`). Python 3.12, `uv` as runtime; `uv`
+  bootstrapped via `curl`. Approved third-party dependencies: `textual`, `rich`.
+- Installation method by tool:
+  - **apt** (non-interactive, no PPA): `htop`, `btop`, `incus`,
+    `unattended-upgrades`; `libatomic1` (pyright runtime dep);
+    `build-essential` (rust build dep)
+  - **RustUp** (via `curl`): `rust`
+  - **`rustup component add`**: `rust-analyzer`
+  - **`cargo binstall`**: `cargo-binstall`, `zellij` (`zellij`), `delta`
+    (`git-delta`), `difft` (`difftastic`), `harper-ls`; `markdown-oxide` uses
+    `--git` (not on crates.io)
+  - **GitHub releases**: `helix` (latest stable `.deb`); `biome`
+    (arch-appropriate binary → `~/.local/bin/`)
+  - **`uv tool install`**: `pyright`, `ruff`
+- Git configured via `git config --global` for `delta` (`alias.dd`,
+  `alias.dl`) and `difft` (`difftool.difftastic.cmd` using
+  `$HOME/.cargo/bin/difft` to avoid PATH issues, `difftool.prompt`,
+  `alias.dft`, `difftastic.color`, `pager.difftool`). Aliases only; default
+  git behaviour unchanged.
 - Root structure:
 ```
 <project root>/

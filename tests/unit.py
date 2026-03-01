@@ -296,6 +296,75 @@ def test_parse_args_list_shows_id(monkeypatch, capsys):
     assert "foo" in out
 
 
+def test_parse_args_all_returns_all_ids(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["install.py", "--all"])
+    result = install._parse_args(_named_items())
+    assert result == {"long-name", "other"}
+
+
+# ---------------------------------------------------------------------------
+# _collect_descendants / _collect_ancestors
+# ---------------------------------------------------------------------------
+
+def _simple_tree():
+    """
+    Build children_of, parent_of, group_names for:
+      [G]
+        a
+        [H]
+          b
+    """
+    children_of = {
+        None:  [("G", True)],
+        "G":   [("a", False), ("H", True)],
+        "H":   [("b", False)],
+    }
+    parent_of = {"G": None, "a": "G", "H": "G", "b": "H"}
+    group_names = {"G", "H"}
+    return children_of, parent_of, group_names
+
+
+def test_collect_descendants_leaf_returns_empty():
+    children_of, parent_of, group_names = _simple_tree()
+    assert install._collect_descendants("b", children_of) == []
+
+
+def test_collect_descendants_item_with_no_children():
+    children_of, parent_of, group_names = _simple_tree()
+    assert install._collect_descendants("a", children_of) == []
+
+
+def test_collect_descendants_group_includes_direct_children():
+    children_of, parent_of, group_names = _simple_tree()
+    result = install._collect_descendants("H", children_of)
+    assert "b" in result
+
+
+def test_collect_descendants_recurses_into_subgroups():
+    children_of, parent_of, group_names = _simple_tree()
+    result = install._collect_descendants("G", children_of)
+    assert "a" in result
+    assert "__group_H__" in result
+    assert "b" in result
+
+
+def test_collect_ancestors_root_returns_empty():
+    children_of, parent_of, group_names = _simple_tree()
+    assert install._collect_ancestors("G", parent_of, group_names) == []
+
+
+def test_collect_ancestors_direct_child_of_group():
+    children_of, parent_of, group_names = _simple_tree()
+    result = install._collect_ancestors("a", parent_of, group_names)
+    assert result == ["__group_G__"]
+
+
+def test_collect_ancestors_deeply_nested():
+    children_of, parent_of, group_names = _simple_tree()
+    result = install._collect_ancestors("b", parent_of, group_names)
+    assert result == ["__group_H__", "__group_G__"]
+
+
 # ---------------------------------------------------------------------------
 # setup_local_bin_path
 # ---------------------------------------------------------------------------

@@ -251,6 +251,7 @@ def install_delta():
             ensure_cargo_binstall()
             run("cargo binstall --no-confirm git-delta")
             log("done")
+        # Applied unconditionally so config is correct even on re-runs.
         run(r"""git config --global alias.dd '!f() { git diff "$@" | delta; }; f'""")
         run(r"""git config --global alias.dl '!f() { git log -p "$@" | delta; }; f'""")
 
@@ -263,6 +264,7 @@ def install_difft():
             ensure_cargo_binstall()
             run("cargo binstall --no-confirm difftastic")
             log("done")
+        # Applied unconditionally so config is correct even on re-runs.
         run("""git config --global difftool.difftastic.cmd '$HOME/.cargo/bin/difft "$LOCAL" "$REMOTE"'""")
         run("git config --global difftool.prompt false")
         run("git config --global alias.dft 'difftool --tool=difftastic --no-prompt'")
@@ -405,6 +407,30 @@ def install_tok():
 
 
 # ---------------------------------------------------------------------------
+# TUI helpers (module-level for testability)
+# ---------------------------------------------------------------------------
+
+def _collect_descendants(node_id: str, children_of: dict) -> list[str]:
+    """Return selection ids for all descendants of node_id, depth-first."""
+    result = []
+    for child_id, child_is_group in children_of.get(node_id, []):
+        result.append(f"__group_{child_id}__" if child_is_group else child_id)
+        result.extend(_collect_descendants(child_id, children_of))
+    return result
+
+
+def _collect_ancestors(node_id: str, parent_of: dict, group_names: set) -> list[str]:
+    """Return selection ids for all ancestors of node_id, immediate parent first."""
+    result = []
+    current = node_id
+    while parent_of.get(current) is not None:
+        p = parent_of[current]
+        result.append(f"__group_{p}__" if p in group_names else p)
+        current = p
+    return result
+
+
+# ---------------------------------------------------------------------------
 # TUI
 # ---------------------------------------------------------------------------
 
@@ -435,25 +461,6 @@ def run_selection_menu(items: list[InstallItem], groups: list[Group]) -> set[str
         parent_of[g.name] = g.parent
     for item in items:
         parent_of[item.id] = item.parent
-
-    def _sel_id(node_id: str, is_group: bool) -> str:
-        return f"__group_{node_id}__" if is_group else node_id
-
-    def _collect_descendants(node_id: str) -> list[str]:
-        result = []
-        for child_id, child_is_group in children_of.get(node_id, []):
-            result.append(_sel_id(child_id, child_is_group))
-            result.extend(_collect_descendants(child_id))
-        return result
-
-    def _collect_ancestors(node_id: str) -> list[str]:
-        result = []
-        current = node_id
-        while parent_of.get(current) is not None:
-            p = parent_of[current]
-            result.append(_sel_id(p, p in group_names))
-            current = p
-        return result
 
     def _make_selections() -> list[Selection]:
         entries = []
@@ -512,14 +519,14 @@ def run_selection_menu(items: list[InstallItem], groups: list[Group]) -> set[str
             is_group_header = sid.startswith("__group_")
             node_id = sid.removeprefix("__group_").removesuffix("__") if is_group_header else sid
 
-            for desc_sid in _collect_descendants(node_id):
+            for desc_sid in _collect_descendants(node_id, children_of):
                 if new_state and desc_sid not in sl.selected:
                     sl.select(desc_sid)
                 elif not new_state and desc_sid in sl.selected:
                     sl.deselect(desc_sid)
 
             if new_state:
-                for anc_sid in _collect_ancestors(node_id):
+                for anc_sid in _collect_ancestors(node_id, parent_of, group_names):
                     if anc_sid not in sl.selected:
                         sl.select(anc_sid)
 
